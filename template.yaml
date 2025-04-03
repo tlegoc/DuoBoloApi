@@ -1,0 +1,273 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: DuoBolo online stack
+
+Parameters:
+  StageParameter:
+    Type: String
+    Default: prod
+    AllowedValues:
+      - prod
+      - dev
+    Description: Stage name
+
+# More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
+Globals:
+  Function:
+    Timeout: 5
+    Runtime: python3.12
+    Handler: app.lambda_handler
+    Architectures:
+      - arm64
+    Environment:
+      Variables:
+        PLAYER_STORAGE_TABLE: !Ref DuoBoloPlayerStorageTable
+
+Resources:
+  DuoBoloApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: duobolo-api
+      StageName: !Ref StageParameter
+      EndpointConfiguration:
+        Type: REGIONAL
+      Auth:
+        Authorizers:
+          CognitoAuthorizer:
+            UserPoolArn: !GetAtt DuoBoloUserPool.Arn
+      Cors:
+        AllowMethods: "'GET,PUT,POST,DELETE,OPTIONS'"
+        AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+        AllowOrigin: "'*'"
+      GatewayResponses:
+        DEFAULT_4XX:
+          ResponseParameters:
+            Headers:
+              Access-Control-Allow-Origin: "'*'"
+              Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              Access-Control-Allow-Methods: "'GET,PUT,POST,DELETE,OPTIONS'"
+        DEFAULT_5XX:
+          ResponseParameters:
+            Headers:
+              Access-Control-Allow-Origin: "'*'"
+              Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              Access-Control-Allow-Methods: "'GET,PUT,POST,DELETE,OPTIONS'"
+      Models:
+        CreateChallengeModel:
+          type: object
+          required: [ name, description, points, start, end ]
+          properties:
+            challenge:
+              type: string
+            name:
+              type: string
+            description:
+              type: string
+            picture_id:
+              type: string
+            points:
+              type: integer
+            start:
+              type: integer
+            end:
+              type: integer
+            max_count:
+              type: integer
+
+  #
+  # COGNITO
+  #
+
+  DuoBoloUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: duobolo-userpool
+      AliasAttributes:
+        - email
+        - preferred_username
+      AutoVerifiedAttributes:
+        - email
+      UsernameConfiguration:
+        CaseSensitive: True
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: False
+          RequireNumbers: False
+          RequireSymbols: False
+          RequireUppercase: False
+      Schema:
+        - Name: email
+          Required: True
+          Mutable: False
+      #        - Name: preferred_username
+      VerificationMessageTemplate:
+        DefaultEmailOption: CONFIRM_WITH_LINK
+        EmailMessageByLink: "You DuoBoloGames account was created. {##Please verify using this link##}."
+        EmailSubjectByLink: "DuoBoloGames - Account verification"
+#      EmailConfiguration:
+#        EmailSendingAccount: DEVELOPER
+#        SourceArn:
+#        # TODO CHANGE
+      LambdaConfig:
+        PostConfirmation: !GetAtt PostConfirmSignUpFunction.Arn
+        PreSignUp: !GetAtt PreSignUpFunction.Arn
+
+  DuoBoloUserPoolAdminGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      Description: Admin group
+      GroupName: Admin
+      UserPoolId: !Ref DuoBoloUserPool
+
+  OnCognitoPostConfirmationSignUpPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt PostConfirmSignUpFunction.Arn
+      Principal: cognito-idp.amazonaws.com
+      SourceArn: !Sub arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/${DuoBoloUserPool}
+
+  OnCognitoPreSignUpPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt PreSignUpFunction.Arn
+      Principal: cognito-idp.amazonaws.com
+      SourceArn: !Sub arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/${DuoBoloUserPool}
+
+  DuoBoloUserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      UserPoolId: !Ref DuoBoloUserPool
+      Domain: !Sub ${StageParameter}-duobolo-userpooldomain
+
+  DuoBoloUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: duobolo-userpoolclient
+      GenerateSecret: False
+      UserPoolId: !Ref DuoBoloUserPool
+      ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+        - ALLOW_CUSTOM_AUTH
+
+  #
+  # DB
+  #
+
+  DuoBoloPlayerStorageTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: duobolo-playerstorage
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: username
+          AttributeType: S
+      KeySchema:
+        - AttributeName: username
+          KeyType: HASH
+
+  #
+  # STUFF
+  #
+
+  AllowAllRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+                - apigateway.amazonaws.com
+                - dynamodb.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Policies:
+        - PolicyName: AllowAllPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: '*'
+                Resource: '*'
+
+  #
+  # FUNCTIONS
+  #
+
+  HelloWorldFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: duobolo-lambda-helloworld
+      CodeUri: hello_world/
+      Role: !GetAtt AllowAllRole.Arn
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /
+            Method: get
+            RestApiId: !Ref DuoBoloApi
+
+#  ResetPasswordFunction:
+#    Type: AWS::Serverless::Function
+#    Properties:
+#      FunctionName: wei_app_lambda_reset_password
+#      CodeUri: reset_password/
+#      Role: !GetAtt AllowAllRole.Arn
+#      Events:
+#        ApiEvent:
+#          Type: Api
+#          Properties:
+#            Path: /reset_password
+#            Method: POST
+#            RestApiId: !Ref WeiAppApi
+#
+#  ResetPasswordSendCodeFunction:
+#    Type: AWS::Serverless::Function
+#    Properties:
+#      FunctionName: wei_app_lambda_reset_password_code_send
+#      CodeUri: reset_password_code_send/
+#      Role: !GetAtt AllowAllRole.Arn
+#      Events:
+#        ApiEvent:
+#          Type: Api
+#          Properties:
+#            Path: /reset_password_code_send
+#            Method: POST
+#            RestApiId: !Ref WeiAppApi
+
+  PostConfirmSignUpFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: wei_app_lambda_post_confirm_sign_up
+      CodeUri: post_confirm_sign_up/
+      Role: !GetAtt AllowAllRole.Arn
+
+  PreSignUpFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: wei_app_lambda_pre_sign_up
+      CodeUri: pre_sign_up/
+      Role: !GetAtt AllowAllRole.Arn
+
+#  DependenciesLayer:
+#    Type: AWS::Serverless::LayerVersion
+#    Properties:
+#      LayerName: DependenciesLayer
+#      ContentUri: dependencies/
+#      CompatibleRuntimes:
+#        - python3.12
+
+Outputs:
+  UserPoolClientID:
+    Value: !Ref DuoBoloUserPoolClient
+    Description: User Pool Client ID
+  ApiUrl:
+    Value: !Sub https://${DuoBoloApi}.execute-api.${AWS::Region}.amazonaws.com
+    Description: API Endpoint URL
