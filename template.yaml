@@ -245,14 +245,14 @@ Resources:
   PostConfirmSignUpFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: wei_app_lambda_post_confirm_sign_up
+      FunctionName: duobolo-lambda-postconfirmsign_up
       CodeUri: post_confirm_sign_up/
       Role: !GetAtt AllowAllRole.Arn
 
   PreSignUpFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: wei_app_lambda_pre_sign_up
+      FunctionName: duobolo-lambda-presignup
       CodeUri: pre_sign_up/
       Role: !GetAtt AllowAllRole.Arn
 
