@@ -21,20 +21,20 @@ Globals:
       - arm64
     Environment:
       Variables:
-        PLAYER_STORAGE_TABLE: !Ref DuoBoloPlayerStorageTable
+        PLAYER_STORAGE_TABLE: !Ref PlayerStorageTable
 
 Resources:
-  DuoBoloApi:
+  Api:
     Type: AWS::Serverless::Api
     Properties:
-      Name: duobolo-api
+      Name: !Sub '${AWS::StackName}-api'
       StageName: !Ref StageParameter
       EndpointConfiguration:
         Type: REGIONAL
       Auth:
         Authorizers:
           CognitoAuthorizer:
-            UserPoolArn: !GetAtt DuoBoloUserPool.Arn
+            UserPoolArn: !GetAtt UserPool.Arn
       Cors:
         AllowMethods: "'GET,PUT,POST,DELETE,OPTIONS'"
         AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
@@ -78,10 +78,10 @@ Resources:
   # COGNITO
   #
 
-  DuoBoloUserPool:
+  UserPool:
     Type: AWS::Cognito::UserPool
     Properties:
-      UserPoolName: duobolo-userpool
+      UserPoolName: !Sub '${AWS::StackName}-userpool'
       AliasAttributes:
         - email
         - preferred_username
@@ -105,20 +105,20 @@ Resources:
         DefaultEmailOption: CONFIRM_WITH_LINK
         EmailMessageByLink: "You DuoBoloGames account was created. {##Please verify using this link##}."
         EmailSubjectByLink: "DuoBoloGames - Account verification"
-#      EmailConfiguration:
-#        EmailSendingAccount: DEVELOPER
-#        SourceArn:
-#        # TODO CHANGE
+      #      EmailConfiguration:
+      #        EmailSendingAccount: DEVELOPER
+      #        SourceArn:
+      #        # TODO CHANGE
       LambdaConfig:
         PostConfirmation: !GetAtt PostConfirmSignUpFunction.Arn
         PreSignUp: !GetAtt PreSignUpFunction.Arn
 
-  DuoBoloUserPoolAdminGroup:
+  UserPoolAdminGroup:
     Type: AWS::Cognito::UserPoolGroup
     Properties:
       Description: Admin group
       GroupName: Admin
-      UserPoolId: !Ref DuoBoloUserPool
+      UserPoolId: !Ref UserPool
 
   OnCognitoPostConfirmationSignUpPermission:
     Type: AWS::Lambda::Permission
@@ -126,7 +126,7 @@ Resources:
       Action: lambda:InvokeFunction
       FunctionName: !GetAtt PostConfirmSignUpFunction.Arn
       Principal: cognito-idp.amazonaws.com
-      SourceArn: !Sub arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/${DuoBoloUserPool}
+      SourceArn: !Sub arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/${UserPool}
 
   OnCognitoPreSignUpPermission:
     Type: AWS::Lambda::Permission
@@ -134,20 +134,20 @@ Resources:
       Action: lambda:InvokeFunction
       FunctionName: !GetAtt PreSignUpFunction.Arn
       Principal: cognito-idp.amazonaws.com
-      SourceArn: !Sub arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/${DuoBoloUserPool}
+      SourceArn: !Sub arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/${UserPool}
 
-  DuoBoloUserPoolDomain:
+  UserPoolDomain:
     Type: AWS::Cognito::UserPoolDomain
     Properties:
-      UserPoolId: !Ref DuoBoloUserPool
+      UserPoolId: !Ref UserPool
       Domain: !Sub ${StageParameter}-duobolo-userpooldomain
 
-  DuoBoloUserPoolClient:
+  UserPoolClient:
     Type: AWS::Cognito::UserPoolClient
     Properties:
-      ClientName: duobolo-userpoolclient
+      ClientName: !Sub '${AWS::StackName}-userpoolclient'
       GenerateSecret: False
-      UserPoolId: !Ref DuoBoloUserPool
+      UserPoolId: !Ref UserPool
       ExplicitAuthFlows:
         - ALLOW_USER_PASSWORD_AUTH
         - ALLOW_REFRESH_TOKEN_AUTH
@@ -157,10 +157,10 @@ Resources:
   # DB
   #
 
-  DuoBoloPlayerStorageTable:
+  PlayerStorageTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: duobolo-playerstorage
+      TableName: !Sub '${AWS::StackName}-playerstorage'
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
         - AttributeName: username
@@ -197,13 +197,33 @@ Resources:
                 Resource: '*'
 
   #
+  # QUEUES
+  #
+
+  MatchmakingTicketQueue:
+    Type: 'AWS::SQS::Queue'
+    Properties:
+      KmsDataKeyReusePeriodSeconds: Integer
+      KmsMasterKeyId: String
+      MaximumMessageSize: Integer
+      MessageRetentionPeriod: Integer
+      QueueName: String
+      ReceiveMessageWaitTimeSeconds: Integer
+      RedriveAllowPolicy: Json
+      RedrivePolicy: Json
+      SqsManagedSseEnabled: Boolean
+      Tags:
+        - Tag
+      VisibilityTimeout: Integer
+
+  #
   # FUNCTIONS
   #
 
   HelloWorldFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: duobolo-lambda-helloworld
+      FunctionName: !Sub '${AWS::StackName}-lambda-helloworld'
       CodeUri: hello_world/
       Role: !GetAtt AllowAllRole.Arn
       Events:
@@ -212,47 +232,47 @@ Resources:
           Properties:
             Path: /
             Method: get
-            RestApiId: !Ref DuoBoloApi
+            RestApiId: !Ref Api
 
-#  ResetPasswordFunction:
-#    Type: AWS::Serverless::Function
-#    Properties:
-#      FunctionName: wei_app_lambda_reset_password
-#      CodeUri: reset_password/
-#      Role: !GetAtt AllowAllRole.Arn
-#      Events:
-#        ApiEvent:
-#          Type: Api
-#          Properties:
-#            Path: /reset_password
-#            Method: POST
-#            RestApiId: !Ref WeiAppApi
-#
-#  ResetPasswordSendCodeFunction:
-#    Type: AWS::Serverless::Function
-#    Properties:
-#      FunctionName: wei_app_lambda_reset_password_code_send
-#      CodeUri: reset_password_code_send/
-#      Role: !GetAtt AllowAllRole.Arn
-#      Events:
-#        ApiEvent:
-#          Type: Api
-#          Properties:
-#            Path: /reset_password_code_send
-#            Method: POST
-#            RestApiId: !Ref WeiAppApi
+  #  ResetPasswordFunction:
+  #    Type: AWS::Serverless::Function
+  #    Properties:
+  #      FunctionName: wei_app_lambda_reset_password
+  #      CodeUri: reset_password/
+  #      Role: !GetAtt AllowAllRole.Arn
+  #      Events:
+  #        ApiEvent:
+  #          Type: Api
+  #          Properties:
+  #            Path: /reset_password
+  #            Method: POST
+  #            RestApiId: !Ref WeiAppApi
+  #
+  #  ResetPasswordSendCodeFunction:
+  #    Type: AWS::Serverless::Function
+  #    Properties:
+  #      FunctionName: wei_app_lambda_reset_password_code_send
+  #      CodeUri: reset_password_code_send/
+  #      Role: !GetAtt AllowAllRole.Arn
+  #      Events:
+  #        ApiEvent:
+  #          Type: Api
+  #          Properties:
+  #            Path: /reset_password_code_send
+  #            Method: POST
+  #            RestApiId: !Ref WeiAppApi
 
   PostConfirmSignUpFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: duobolo-lambda-postconfirmsign_up
+      FunctionName: !Sub '${AWS::StackName}-lambda-postconfirmsign_up'
       CodeUri: post_confirm_sign_up/
       Role: !GetAtt AllowAllRole.Arn
 
   PreSignUpFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: duobolo-lambda-presignup
+      FunctionName: !Sub '${AWS::StackName}-lambda-presignup'
       CodeUri: pre_sign_up/
       Role: !GetAtt AllowAllRole.Arn
 
@@ -266,8 +286,8 @@ Resources:
 
 Outputs:
   UserPoolClientID:
-    Value: !Ref DuoBoloUserPoolClient
+    Value: !Ref UserPoolClient
     Description: User Pool Client ID
   ApiUrl:
-    Value: !Sub https://${DuoBoloApi}.execute-api.${AWS::Region}.amazonaws.com
+    Value: !Sub https://${Api}.execute-api.${AWS::Region}.amazonaws.com
     Description: API Endpoint URL
