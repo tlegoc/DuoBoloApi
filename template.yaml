@@ -204,13 +204,9 @@ Resources:
       Location: lobbywebsocket.yaml
       Parameters:
         StageParameter: !Ref StageParameter
-        #        UserPoolId: !Ref UserPool
-        #        UserPoolClientId: !Ref UserPoolClient
-        #        ApiId: !Ref Api
         AllowAllRoleArn: !GetAtt AllowAllRole.Arn
         CognitoUserPoolId: !Ref UserPool
         CognitoUserPoolClientId: !Ref UserPoolClient
-        DependenciesLayer: !Ref DependenciesLayer
 
   #
   # FLEXMATCH
@@ -334,15 +330,6 @@ Resources:
       FunctionName: !Sub '${AWS::StackName}-lambda-presignup'
       CodeUri: pre_sign_up/
       Role: !GetAtt AllowAllRole.Arn
-
-  DependenciesLayer:
-    Type: AWS::Serverless::LayerVersion
-    Properties:
-      LayerName: DependenciesLayer
-      ContentUri: dependencies/
-      CompatibleRuntimes:
-        - python3.12
-
 
 Outputs:
   UserPoolClientID:

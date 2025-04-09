@@ -7,8 +7,6 @@ Globals:
     Timeout: 5
     Runtime: python3.12
     Handler: app.lambda_handler
-    Architectures:
-      - arm64
 
 # Parameters
 Parameters:
@@ -28,9 +26,6 @@ Parameters:
   CognitoUserPoolClientId:
     Type: String
     Description: The ID of the Cognito User Pool Client to use for authentication.
-  DependenciesLayer:
-    Type: String
-    Description: The ARN of the Lambda layer containing dependencies.
 
 Outputs:
   ApiEndpoint:
@@ -49,42 +44,48 @@ Resources:
   # AUTH
   #
 
-  # Lambda function working as authorizer
-  LambdaAuthorizerHandler:
+  AuthDependenciesLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: AuthDependenciesLayer
+      ContentUri: auth_dependencies/
+      CompatibleRuntimes:
+        - python3.12
+
+  AuthFunction:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub '${AWS::StackName}-auth-fn'
       CodeUri: authorizer/
+      Architectures:
+        - x86_64
       Environment:
         Variables:
           COGNITO_USER_POOL_ID: !Ref 'CognitoUserPoolId'
           COGNITO_USER_POOL_CLIENT_ID: !Ref 'CognitoUserPoolClientId'
           COGNITO_REGION: !Ref 'AWS::Region'
       Layers:
-        - !Ref DependenciesLayer
+        - !Ref AuthDependenciesLayer
 
-  # Grant API Gateway permissions to invoke this function
-  LambdaAuthorizerPermission:
+  AuthPermission:
     Type: AWS::Lambda::Permission
     DependsOn:
-      - LambdaAuthorizerHandler
+      - AuthFunction
       - Api
     Properties:
       Action: lambda:InvokeFunction
-      FunctionName: !Ref 'LambdaAuthorizerHandler'
+      FunctionName: !Ref AuthFunction
       Principal: apigateway.amazonaws.com
 
-  # Authorizer for API Gateway (WebSocket API)
-  LambdaAuthorizer:
+  Authorizer:
     Type: AWS::ApiGatewayV2::Authorizer
     Properties:
       Name: !Sub '${AWS::StackName}-authorizer'
       ApiId: !Ref Api
       AuthorizerType: REQUEST
-      AuthorizerUri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaAuthorizerHandler.Arn}/invocations'
+      AuthorizerUri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AuthFunction.Arn}/invocations'
       IdentitySource:
-        - route.request.header.Authorization
-      EnableSimpleResponses: true
+        - route.request.querystring.token
 
   # CONNECTION
   OnConnectLambdaFunction:
@@ -93,6 +94,8 @@ Resources:
       FunctionName: !Sub '${AWS::StackName}-onconnect'
       CodeUri: lobbyws_onconnect/
       Role: !Ref AllowAllRoleArn
+      Architectures:
+        - arm64
 
   OnConnectFunctionResourcePermission:
     Type: 'AWS::Lambda::Permission'
@@ -107,9 +110,7 @@ Resources:
     Properties:
       ApiId: !Ref Api
       IntegrationType: AWS_PROXY
-      IntegrationUri:
-        Fn::Sub:
-          arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OnConnectLambdaFunction.Arn}/invocations
+      IntegrationUri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OnConnectLambdaFunction.Arn}/invocations'
 
   OnConnectRoute:
     Type: AWS::ApiGatewayV2::Route
@@ -118,7 +119,7 @@ Resources:
       RouteKey: $connect
       AuthorizationType: CUSTOM
       AuthorizerId: !Ref LambdaAuthorizer
-      OperationName: OnConnectRoute
+      OperationName: connect
       Target: !Join
         - '/'
         - - 'integrations'
@@ -132,6 +133,8 @@ Resources:
       FunctionName: !Sub '${AWS::StackName}-ondisconnect'
       CodeUri: lobbyws_ondisconnect/
       Role: !Ref AllowAllRoleArn
+      Architectures:
+        - arm64
 
   OnDisconnectFunctionResourcePermission:
     Type: 'AWS::Lambda::Permission'
@@ -156,7 +159,7 @@ Resources:
       ApiId: !Ref Api
       RouteKey: $disconnect
       AuthorizationType: NONE
-      OperationName: OnDisconnectRoute
+      OperationName: disconnect
       Target: !Join
         - '/'
         - - 'integrations'
