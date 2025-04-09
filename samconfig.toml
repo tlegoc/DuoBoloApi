@@ -3,7 +3,7 @@ version = 0.1
 stack_name = "duobolo-api"
 resolve_s3 = true
 s3_prefix = "duobolo-api"
-capabilities = "CAPABILITY_IAM CAPABILITY_NAMED_IAM"
+capabilities = "CAPABILITY_IAM CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND"
 image_repositories = []
 confirm_changeset = true
 parameter_overrides = "StageParameter=\"prod\""

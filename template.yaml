@@ -196,25 +196,83 @@ Resources:
                 Action: '*'
                 Resource: '*'
 
+  # WEBSOCKETS
+
+  LobbyWebSocketApplication:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: lobbywebsocket.yaml
+      Parameters:
+        StageParameter: !Ref StageParameter
+        #        UserPoolId: !Ref UserPool
+        #        UserPoolClientId: !Ref UserPoolClient
+        #        ApiId: !Ref Api
+        AllowAllRoleArn: !GetAtt AllowAllRole.Arn
+        CognitoUserPoolId: !Ref UserPool
+        CognitoUserPoolClientId: !Ref UserPoolClient
+        DependenciesLayer: !Ref DependenciesLayer
+
   #
-  # QUEUES
+  # FLEXMATCH
   #
 
-  MatchmakingTicketQueue:
-    Type: 'AWS::SQS::Queue'
+  MatchmakingRuleSet:
+    Type: AWS::GameLift::MatchmakingRuleSet
     Properties:
-      KmsDataKeyReusePeriodSeconds: Integer
-      KmsMasterKeyId: String
-      MaximumMessageSize: Integer
-      MessageRetentionPeriod: Integer
-      QueueName: String
-      ReceiveMessageWaitTimeSeconds: Integer
-      RedriveAllowPolicy: Json
-      RedrivePolicy: Json
-      SqsManagedSseEnabled: Boolean
-      Tags:
-        - Tag
-      VisibilityTimeout: Integer
+      Name: !Sub '${AWS::StackName}-matchmakingruleset'
+      RuleSetBody: '{
+    "ruleLanguageVersion": "1.0",
+    "teams": [{
+        "name": "red",
+        "minPlayers": 1,
+        "maxPlayers": 1,
+        "quantity": 4
+    }],
+    "algorithm": {
+        "strategy":"balanced",
+        "balancedAttribute": "skill",
+        "batchingPreference":"fastestRegion"
+    },
+    "playerAttributes": [{
+        "name": "skill",
+        "type": "number"
+    }],
+    "rules": [{
+        "name": "SimilarSkill",
+        "type": "batchDistance",
+        "batchAttribute": "skill",
+        "maxDistance": 10
+    }],
+    "expansions": [{
+        "target": "rules[SimilarSkill].maxDistance",
+        "steps": [{
+            "waitTimeSeconds": 10,
+            "value": 20
+        }, {
+            "waitTimeSeconds": 20,
+            "value": 40
+        }]
+    }]
+}'
+
+  MatchmakingEventTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: !Sub '${AWS::StackName}-matchmakingeventtopic'
+
+  MatchmakingConfiguration:
+    Type: 'AWS::GameLift::MatchmakingConfiguration'
+    Properties:
+      AcceptanceRequired: false
+      #      AcceptanceTimeoutSeconds: 10
+      #      CustomEventData: String
+      Description: "Default matchmaking configuration for standard 1v1v1v1 matches"
+      FlexMatchMode: STANDALONE
+      Name: !Sub '${AWS::StackName}-matchmakingconfiguration'
+      NotificationTarget: !GetAtt MatchmakingEventTopic.TopicArn
+      RequestTimeoutSeconds: 360
+      RuleSetArn: !GetAtt MatchmakingRuleSet.Arn
+      RuleSetName: !Ref MatchmakingRuleSet
 
   #
   # FUNCTIONS
@@ -233,6 +291,7 @@ Resources:
             Path: /
             Method: get
             RestApiId: !Ref Api
+
 
   #  ResetPasswordFunction:
   #    Type: AWS::Serverless::Function
@@ -265,7 +324,7 @@ Resources:
   PostConfirmSignUpFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub '${AWS::StackName}-lambda-postconfirmsign_up'
+      FunctionName: !Sub '${AWS::StackName}-lambda-postconfirmsignup'
       CodeUri: post_confirm_sign_up/
       Role: !GetAtt AllowAllRole.Arn
 
@@ -276,13 +335,14 @@ Resources:
       CodeUri: pre_sign_up/
       Role: !GetAtt AllowAllRole.Arn
 
-#  DependenciesLayer:
-#    Type: AWS::Serverless::LayerVersion
-#    Properties:
-#      LayerName: DependenciesLayer
-#      ContentUri: dependencies/
-#      CompatibleRuntimes:
-#        - python3.12
+  DependenciesLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: DependenciesLayer
+      ContentUri: dependencies/
+      CompatibleRuntimes:
+        - python3.12
+
 
 Outputs:
   UserPoolClientID:
@@ -291,3 +351,6 @@ Outputs:
   ApiUrl:
     Value: !Sub https://${Api}.execute-api.${AWS::Region}.amazonaws.com
     Description: API Endpoint URL
+  MatchmakingConfiguration:
+    Value: !Ref MatchmakingConfiguration
+    Description: Matchmaking Configuration ARN
