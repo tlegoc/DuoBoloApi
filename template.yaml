@@ -152,6 +152,11 @@ Resources:
         - ALLOW_USER_PASSWORD_AUTH
         - ALLOW_REFRESH_TOKEN_AUTH
         - ALLOW_CUSTOM_AUTH
+      IdTokenValidity: 1
+      TokenValidityUnits:
+        AccessToken: days
+        IdToken: days
+        RefreshToken: days
 
   #
   # DB
@@ -185,6 +190,7 @@ Resources:
                 - lambda.amazonaws.com
                 - apigateway.amazonaws.com
                 - dynamodb.amazonaws.com
+                - gamelift.amazonaws.com
             Action:
               - 'sts:AssumeRole'
       Policies:
@@ -192,83 +198,21 @@ Resources:
           PolicyDocument:
             Version: "2012-10-17"
             Statement:
-              - Effect: Allow
+              - Effect: Allow # TODO MORE STRICT
                 Action: '*'
                 Resource: '*'
 
-  # WEBSOCKETS
+  # MATCHMAKING
 
-  LobbyWebSocketApplication:
+  MatchmakingStack:
     Type: AWS::Serverless::Application
     Properties:
-      Location: lobbywebsocket.yaml
+      Location: matchmaking.yaml
       Parameters:
         StageParameter: !Ref StageParameter
         AllowAllRoleArn: !GetAtt AllowAllRole.Arn
         CognitoUserPoolId: !Ref UserPool
         CognitoUserPoolClientId: !Ref UserPoolClient
-
-  #
-  # FLEXMATCH
-  #
-
-  MatchmakingRuleSet:
-    Type: AWS::GameLift::MatchmakingRuleSet
-    Properties:
-      Name: !Sub '${AWS::StackName}-matchmakingruleset'
-      RuleSetBody: '{
-    "ruleLanguageVersion": "1.0",
-    "teams": [{
-        "name": "red",
-        "minPlayers": 1,
-        "maxPlayers": 1,
-        "quantity": 4
-    }],
-    "algorithm": {
-        "strategy":"balanced",
-        "balancedAttribute": "skill",
-        "batchingPreference":"fastestRegion"
-    },
-    "playerAttributes": [{
-        "name": "skill",
-        "type": "number"
-    }],
-    "rules": [{
-        "name": "SimilarSkill",
-        "type": "batchDistance",
-        "batchAttribute": "skill",
-        "maxDistance": 10
-    }],
-    "expansions": [{
-        "target": "rules[SimilarSkill].maxDistance",
-        "steps": [{
-            "waitTimeSeconds": 10,
-            "value": 20
-        }, {
-            "waitTimeSeconds": 20,
-            "value": 40
-        }]
-    }]
-}'
-
-  MatchmakingEventTopic:
-    Type: AWS::SNS::Topic
-    Properties:
-      DisplayName: !Sub '${AWS::StackName}-matchmakingeventtopic'
-
-  MatchmakingConfiguration:
-    Type: 'AWS::GameLift::MatchmakingConfiguration'
-    Properties:
-      AcceptanceRequired: false
-      #      AcceptanceTimeoutSeconds: 10
-      #      CustomEventData: String
-      Description: "Default matchmaking configuration for standard 1v1v1v1 matches"
-      FlexMatchMode: STANDALONE
-      Name: !Sub '${AWS::StackName}-matchmakingconfiguration'
-      NotificationTarget: !GetAtt MatchmakingEventTopic.TopicArn
-      RequestTimeoutSeconds: 360
-      RuleSetArn: !GetAtt MatchmakingRuleSet.Arn
-      RuleSetName: !Ref MatchmakingRuleSet
 
   #
   # FUNCTIONS
@@ -338,6 +282,3 @@ Outputs:
   ApiUrl:
     Value: !Sub https://${Api}.execute-api.${AWS::Region}.amazonaws.com
     Description: API Endpoint URL
-  MatchmakingConfiguration:
-    Value: !Ref MatchmakingConfiguration
-    Description: Matchmaking Configuration ARN

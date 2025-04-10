@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: Lobby websocket stack
+Description: matchmaking stack
 
 Globals:
   Function:
@@ -36,9 +36,97 @@ Resources:
   Api:
     Type: 'AWS::ApiGatewayV2::Api'
     Properties:
-      Name: !Sub '${AWS::StackName}-lobbyws-api'
+      Name: !Sub '${AWS::StackName}-api'
       ProtocolType: WEBSOCKET
       RouteSelectionExpression: "$request.body.action"
+
+  #
+  # FLEXMATCH
+  #
+
+  MatchmakingRuleSet:
+    Type: AWS::GameLift::MatchmakingRuleSet
+    Properties:
+      Name: !Sub '${AWS::StackName}-ruleset'
+      RuleSetBody: '{
+    "ruleLanguageVersion": "1.0",
+    "teams": [{
+        "name": "player",
+        "minPlayers": 1,
+        "maxPlayers": 1,
+        "quantity": 2
+    }],
+    "playerAttributes": [{
+        "name": "skill",
+        "type": "number"
+    }],
+    "rules": [{
+        "name": "SimilarSkill",
+        "type": "batchDistance",
+        "batchAttribute": "skill",
+        "maxDistance": 10
+    }],
+    "expansions": [{
+        "target": "rules[SimilarSkill].maxDistance",
+        "steps": [{
+            "waitTimeSeconds": 10,
+            "value": 20
+        }, {
+            "waitTimeSeconds": 20,
+            "value": 40
+        }, {
+            "waitTimeSeconds": 30,
+            "value": 99999
+        }]
+    }]
+}'
+
+  MatchmakingEventTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: !Sub '${AWS::StackName}-matchmakingeventtopic'
+
+  MatchmakingConfiguration:
+    Type: 'AWS::GameLift::MatchmakingConfiguration'
+    Properties:
+      AcceptanceRequired: false
+      #      AcceptanceTimeoutSeconds: 10
+      #      CustomEventData: String
+      Description: "Default matchmaking configuration for standard 1v1v1v1 matches"
+      FlexMatchMode: STANDALONE
+      Name: !Sub '${AWS::StackName}-matchmakingconfiguration'
+      NotificationTarget: !GetAtt MatchmakingEventTopic.TopicArn
+      RequestTimeoutSeconds: 360
+      RuleSetArn: !GetAtt MatchmakingRuleSet.Arn
+      RuleSetName: !Ref MatchmakingRuleSet
+      
+  #
+  #
+  #
+  
+  OnMatchFoundLambdaFunction:
+    Type: 'AWS::Serverless::Function'
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-onmatchfound'
+      CodeUri: mm_onmatchfound/
+      Role: !Ref AllowAllRoleArn
+      Architectures:
+        - arm64
+      Environment:
+        Variables:
+          REGION: !Ref 'AWS::Region'
+          MATCHMAKING_CONFIG_NAME: !Ref MatchmakingConfiguration
+          WEBSOCKET_API_ID: !Ref Api
+          STAGE: !Ref StageParameter
+      Events:
+        MatchmakingEvent:
+          Type: SNS
+          Properties:
+            Topic: !Ref MatchmakingEventTopic
+            FilterPolicyScope: "MessageBody"
+            FilterPolicy: '{ "detail": {
+              "type": ["MatchmakingSucceeded"]
+            }}'
 
   #
   # AUTH
@@ -47,16 +135,21 @@ Resources:
   AuthDependenciesLayer:
     Type: AWS::Serverless::LayerVersion
     Properties:
-      LayerName: AuthDependenciesLayer
+      LayerName: !Sub '${AWS::StackName}-auth-dep'
+      Description: Auth dependencies layer
       ContentUri: auth_dependencies/
+      CompatibleArchitectures:
+        - x86_64
       CompatibleRuntimes:
         - python3.12
 
-  AuthFunction:
-    Type: AWS::Serverless::Function
+  # CONNECTION
+  OnConnectLambdaFunction:
+    Type: 'AWS::Serverless::Function'
     Properties:
-      FunctionName: !Sub '${AWS::StackName}-auth-fn'
-      CodeUri: authorizer/
+      FunctionName: !Sub '${AWS::StackName}-onconnect'
+      CodeUri: mm_onconnect/
+      Role: !Ref AllowAllRoleArn
       Architectures:
         - x86_64
       Environment:
@@ -64,38 +157,9 @@ Resources:
           COGNITO_USER_POOL_ID: !Ref 'CognitoUserPoolId'
           COGNITO_USER_POOL_CLIENT_ID: !Ref 'CognitoUserPoolClientId'
           COGNITO_REGION: !Ref 'AWS::Region'
+          MATCHMAKING_CONFIG_NAME: !Ref MatchmakingConfiguration
       Layers:
         - !Ref AuthDependenciesLayer
-
-  AuthPermission:
-    Type: AWS::Lambda::Permission
-    DependsOn:
-      - AuthFunction
-      - Api
-    Properties:
-      Action: lambda:InvokeFunction
-      FunctionName: !Ref AuthFunction
-      Principal: apigateway.amazonaws.com
-
-  Authorizer:
-    Type: AWS::ApiGatewayV2::Authorizer
-    Properties:
-      Name: !Sub '${AWS::StackName}-authorizer'
-      ApiId: !Ref Api
-      AuthorizerType: REQUEST
-      AuthorizerUri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AuthFunction.Arn}/invocations'
-      IdentitySource:
-        - route.request.querystring.token
-
-  # CONNECTION
-  OnConnectLambdaFunction:
-    Type: 'AWS::Serverless::Function'
-    Properties:
-      FunctionName: !Sub '${AWS::StackName}-onconnect'
-      CodeUri: lobbyws_onconnect/
-      Role: !Ref AllowAllRoleArn
-      Architectures:
-        - arm64
 
   OnConnectFunctionResourcePermission:
     Type: 'AWS::Lambda::Permission'
@@ -117,8 +181,6 @@ Resources:
     Properties:
       ApiId: !Ref Api
       RouteKey: $connect
-      AuthorizationType: CUSTOM
-      AuthorizerId: !Ref LambdaAuthorizer
       OperationName: connect
       Target: !Join
         - '/'
@@ -131,7 +193,7 @@ Resources:
     Type: 'AWS::Serverless::Function'
     Properties:
       FunctionName: !Sub '${AWS::StackName}-ondisconnect'
-      CodeUri: lobbyws_ondisconnect/
+      CodeUri: mm_ondisconnect/
       Role: !Ref AllowAllRoleArn
       Architectures:
         - arm64
@@ -171,7 +233,6 @@ Resources:
     DependsOn:
       - OnConnectRoute
       - OnDisconnectRoute
-      - LambdaAuthorizerHandler
     Properties:
       ApiId: !Ref Api
 
