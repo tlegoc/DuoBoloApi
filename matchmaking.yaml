@@ -96,7 +96,7 @@ Resources:
       FlexMatchMode: STANDALONE
       Name: !Sub '${AWS::StackName}-matchmakingconfiguration'
       NotificationTarget: !GetAtt MatchmakingEventTopic.TopicArn
-      RequestTimeoutSeconds: 360
+      RequestTimeoutSeconds: 300
       RuleSetArn: !GetAtt MatchmakingRuleSet.Arn
       RuleSetName: !Ref MatchmakingRuleSet
   
