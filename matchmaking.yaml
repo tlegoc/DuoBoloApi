@@ -99,10 +99,6 @@ Resources:
       RequestTimeoutSeconds: 360
       RuleSetArn: !GetAtt MatchmakingRuleSet.Arn
       RuleSetName: !Ref MatchmakingRuleSet
-      
-  #
-  #
-  #
   
   OnMatchFoundLambdaFunction:
     Type: 'AWS::Serverless::Function'
@@ -126,6 +122,30 @@ Resources:
             FilterPolicyScope: "MessageBody"
             FilterPolicy: '{ "detail": {
               "type": ["MatchmakingSucceeded"]
+            }}'
+
+  OnTicketDroppedLambdaFunction:
+    Type: 'AWS::Serverless::Function'
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-onticketdropped'
+      CodeUri: mm_onticketdropped/
+      Role: !Ref AllowAllRoleArn
+      Architectures:
+        - arm64
+      Environment:
+        Variables:
+          REGION: !Ref 'AWS::Region'
+          MATCHMAKING_CONFIG_NAME: !Ref MatchmakingConfiguration
+          WEBSOCKET_API_ID: !Ref Api
+          STAGE: !Ref StageParameter
+      Events:
+        MatchmakingEvent:
+          Type: SNS
+          Properties:
+            Topic: !Ref MatchmakingEventTopic
+            FilterPolicyScope: "MessageBody"
+            FilterPolicy: '{ "detail": {
+              "type": ["MatchmakingTimedOut", "MatchmakingFailed"]
             }}'
 
   #

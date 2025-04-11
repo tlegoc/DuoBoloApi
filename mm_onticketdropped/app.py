@@ -11,7 +11,7 @@ def lambda_handler(event, context):
     message = json.loads(event['Records'][0]['Sns']['Message'])
 
     # ensure message is match succeeded
-    if message['detail']['type'] != 'MatchmakingSucceeded':
+    if message['detail']['type'] not in ['MatchmakingTimedOut', 'MatchmakingFailed']:
         return
 
     # cancel all websocket connections. Their id is the ticket id
@@ -25,12 +25,12 @@ def lambda_handler(event, context):
         print(f"Canceling connection {connection_id}")
         client = boto3.client('apigatewaymanagementapi', endpoint_url=f'https://{websocket_api_id}.execute-api.{region}.amazonaws.com/{stage}')
         try:
-            client.post_to_connection(
-                ConnectionId=connection_id,
-                Data=json.dumps({'status': 'found', 'ip': "0.0.0.0", 'port': '6969'})
-            )
-            # client.delete_connection(
-            #     ConnectionId=connection_id
+            # client.post_to_connection(
+            #     ConnectionId=connection_id,
+            #     Data=json.dumps({'status': 'found', 'event': message})
             # )
+            client.delete_connection(
+                ConnectionId=connection_id
+            )
         except Exception as e:
             print(f"Error canceling ticket {connection_id}: {e}")

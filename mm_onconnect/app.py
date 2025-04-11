@@ -90,7 +90,6 @@ def lambda_handler(event, context):
                         }
                     }
                     # 'Team': 'red'
-                    # add connection id to player for later use
                 },
             ]
         )
