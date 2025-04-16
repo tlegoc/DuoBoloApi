@@ -149,6 +149,82 @@ Resources:
             }}'
 
   #
+  # SERVEr
+  #
+
+  ContainerRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      EmptyOnDelete: true
+      RepositoryName: !Sub '${AWS::StackName}-container-repo'
+#      RepositoryPolicyText: Json
+
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      ContainerDefinitions:
+        -
+#          Command:
+#            - String
+#          DependsOn:
+#            - ContainerDependency
+#          DnsSearchDomains:
+#            - String
+#          DnsServers:
+#            - String
+#          DockerLabels:
+#            Key: Value
+#          EntryPoint:
+#            - String
+#          Environment:
+#            - KeyValuePair
+#          EnvironmentFiles:
+#            - EnvironmentFile
+          Essential: true
+          Image: !Sub '${ContainerRepository}.dkr.ecr.${AWS::Region}.amazonaws.com/${ContainerRepository}:latest'
+          Name: !Sub '${AWS::StackName}-container'
+          PortMappings:
+            -
+#              ContainerPort: Integer
+#              ContainerPortRange: String
+              HostPort: 7777
+              Name: ServerPort
+              Protocol: udp
+#          RepositoryCredentials:
+#            RepositoryCredentials
+          RestartPolicy:
+            Enabled: false
+
+          Secrets:
+            - Secret
+          StartTimeout: Integer
+          StopTimeout: Integer
+          SystemControls:
+            - SystemControl
+          Ulimits:
+            - Ulimit
+          User: String
+          VersionConsistency: String
+          VolumesFrom:
+            - VolumeFrom
+          WorkingDirectory: String
+
+      Cpu: 256
+      ExecutionRoleArn: !Ref AllowAllRoleArn
+      Memory: 512
+      NetworkMode: awsvpc
+      PidMode: task
+      RequiresCompatibilities:
+        - FARGATE
+      RuntimePlatform:
+        CpuArchitecture: X86_64
+        OperatingSystemFamily: LINUX
+      Tags:
+        - Tag
+      TaskRoleArn: !Ref AllowAllRoleArn
+
+
+  #
   # AUTH
   #
 
