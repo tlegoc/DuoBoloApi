@@ -265,7 +265,7 @@ Resources:
       VpcId: !Ref VPC
       AmazonProvidedIpv6CidrBlock: true
 
-  PublicSubnet:
+  PublicSubnet1:
     Type: AWS::EC2::Subnet
     Properties:
       VpcId: !Ref VPC
@@ -273,21 +273,45 @@ Resources:
         - 0
         - !GetAZs
           Ref: 'AWS::Region'
-      CidrBlock: 10.0.1.0/24
-      Ipv6CidrBlock:
-        Fn::Select:
-          - 0
-          - Fn::Cidr:
-              - Fn::Select:
-                  - 0
-                  - Fn::GetAtt: [ VPC, Ipv6CidrBlocks ]
-              - 256
-              - 64
-      AssignIpv6AddressOnCreation: true
+      CidrBlock: 10.0.0.0/19
+#      Ipv6CidrBlock:
+#        Fn::Select:
+#          - 0
+#          - Fn::Cidr:
+#              - Fn::Select:
+#                  - 0
+#                  - Fn::GetAtt: [ VPC, Ipv6CidrBlocks ]
+#              - 256
+#              - 64
+#      AssignIpv6AddressOnCreation: true
       MapPublicIpOnLaunch: true
       Tags:
         - Key: Name
-          Value: !Sub '${AWS::StackName}-public-subnet'
+          Value: !Sub '${AWS::StackName}-public-subnet1'
+
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select
+        - 0
+        - !GetAZs
+          Ref: 'AWS::Region'
+      CidrBlock: 10.0.32.0/19
+#      Ipv6CidrBlock:
+#        Fn::Select:
+#          - 0
+#          - Fn::Cidr:
+#              - Fn::Select:
+#                  - 0
+#                  - Fn::GetAtt: [ VPC, Ipv6CidrBlocks ]
+#              - 256
+#              - 64
+#      AssignIpv6AddressOnCreation: true
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-public-subnet2'
 
   RouteTable:
     Type: "AWS::EC2::RouteTable"
@@ -318,11 +342,17 @@ Resources:
       GatewayId: !Ref InternetGateway
       RouteTableId: !Ref RouteTable
 
-  SubnetRouteTableAssociation:
+  Subnet1RouteTableAssociation:
     Type: "AWS::EC2::SubnetRouteTableAssociation"
     Properties:
       RouteTableId: !Ref RouteTable
-      SubnetId: !Ref PublicSubnet
+      SubnetId: !Ref PublicSubnet1
+
+  Subnet2RouteTableAssociation:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      RouteTableId: !Ref RouteTable
+      SubnetId: !Ref PublicSubnet2
 
   GameServerSecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -350,6 +380,37 @@ Resources:
         - Key: Name
           Value: !Sub '${AWS::StackName}-sg'
 
+  NLB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub 'game-load-balancer'
+      Type: network
+      Scheme: internet-facing
+      Subnets:
+        - !Ref PublicSubnet1
+        - !Ref PublicSubnet2
+
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: 'game-target-group'
+      Port: 13333
+      Protocol: UDP
+      VpcId: !Ref VPC
+      TargetType: ip
+      HealthCheckProtocol: TCP
+      HealthCheckPort: 12345
+      HealthCheckEnabled: true
+
+  Listener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref NLB
+      Port: 13333
+      Protocol: UDP
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroup
   #
   # AUTH
   #
