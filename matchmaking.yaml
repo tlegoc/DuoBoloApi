@@ -149,66 +149,75 @@ Resources:
             }}'
 
   #
-  # SERVEr
+  # SERVER
   #
 
   ContainerRepository:
     Type: AWS::ECR::Repository
     Properties:
       EmptyOnDelete: true
-      RepositoryName: !Sub '${AWS::StackName}-container-repo'
-#      RepositoryPolicyText: Json
+      RepositoryPolicyText: '{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "Allow",
+            "Effect": "Allow",
+            "Principal": {
+                "Service": "ecs-tasks.amazonaws.com"
+            },
+            "Action": [
+                "ecr:*"
+            ]
+        }
+    ]
+}'
+
+  GameServerLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/ecs/${AWS::StackName}-container'
+      RetentionInDays: 7
 
   TaskDefinition:
     Type: AWS::ECS::TaskDefinition
     Properties:
       ContainerDefinitions:
-        -
-#          Command:
-#            - String
-#          DependsOn:
-#            - ContainerDependency
-#          DnsSearchDomains:
-#            - String
-#          DnsServers:
-#            - String
-#          DockerLabels:
-#            Key: Value
-#          EntryPoint:
-#            - String
-#          Environment:
-#            - KeyValuePair
-#          EnvironmentFiles:
-#            - EnvironmentFile
+        - Name: !Sub '${AWS::StackName}-container'
           Essential: true
-          Image: !Sub '${ContainerRepository}.dkr.ecr.${AWS::Region}.amazonaws.com/${ContainerRepository}:latest'
-          Name: !Sub '${AWS::StackName}-container'
+          Image: !GetAtt ContainerRepository.RepositoryUri
           PortMappings:
-            -
-#              ContainerPort: Integer
-#              ContainerPortRange: String
-              HostPort: 7777
-              Name: ServerPort
+            - ContainerPort: 13333
               Protocol: udp
-#          RepositoryCredentials:
-#            RepositoryCredentials
           RestartPolicy:
             Enabled: false
-
-          Secrets:
-            - Secret
-          StartTimeout: Integer
-          StopTimeout: Integer
-          SystemControls:
-            - SystemControl
-          Ulimits:
-            - Ulimit
-          User: String
-          VersionConsistency: String
-          VolumesFrom:
-            - VolumeFrom
-          WorkingDirectory: String
-
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Sub '/ecs/${AWS::StackName}-container'
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ecs
+      #          RepositoryCredentials:
+      #            RepositoryCredentials
+      #          Secrets:
+      #            - Secret
+      #          StartTimeout: Integer
+      #          StopTimeout: Integer
+      #          Command:
+      #            - String
+      #          DependsOn:
+      #            - ContainerDependency
+      #          DnsSearchDomains:
+      #            - String
+      #          DnsServers:
+      #            - String
+      #          DockerLabels:
+      #            Key: Value
+      #          EntryPoint:
+      #            - String
+      #          Environment:
+      #            - KeyValuePair
+      #          EnvironmentFiles:
+      #            - EnvironmentFile
       Cpu: 256
       ExecutionRoleArn: !Ref AllowAllRoleArn
       Memory: 512
@@ -219,10 +228,127 @@ Resources:
       RuntimePlatform:
         CpuArchitecture: X86_64
         OperatingSystemFamily: LINUX
-      Tags:
-        - Tag
       TaskRoleArn: !Ref AllowAllRoleArn
 
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub '${AWS::StackName}-cluster'
+      CapacityProviders:
+        - FARGATE
+        - FARGATE_SPOT
+      DefaultCapacityProviderStrategy:
+        - CapacityProvider: FARGATE_SPOT
+          Base: 1
+          Weight: 1
+      ClusterSettings:
+        - Name: containerInsights
+          Value: enabled
+      Configuration:
+        ExecuteCommandConfiguration:
+          Logging: DEFAULT
+
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      InstanceTenancy: default
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-vpc'
+
+  IPv6CidrBlock:
+    Type: AWS::EC2::VPCCidrBlock
+    Properties:
+      VpcId: !Ref VPC
+      AmazonProvidedIpv6CidrBlock: true
+
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select
+        - 0
+        - !GetAZs
+          Ref: 'AWS::Region'
+      CidrBlock: 10.0.1.0/24
+      Ipv6CidrBlock:
+        Fn::Select:
+          - 0
+          - Fn::Cidr:
+              - Fn::Select:
+                  - 0
+                  - Fn::GetAtt: [ VPC, Ipv6CidrBlocks ]
+              - 256
+              - 64
+      AssignIpv6AddressOnCreation: true
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-public-subnet'
+
+  RouteTable:
+    Type: "AWS::EC2::RouteTable"
+    Properties:
+      VpcId: !Ref VPC
+
+  InternetGateway:
+    Type: "AWS::EC2::InternetGateway"
+
+  VPCGatewayAttachment:
+    Type: "AWS::EC2::VPCGatewayAttachment"
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  InternetRoute:
+    Type: "AWS::EC2::Route"
+    DependsOn: VPCGatewayAttachment
+    Properties:
+      DestinationCidrBlock: "0.0.0.0/0"
+      GatewayId: !Ref InternetGateway
+      RouteTableId: !Ref RouteTable
+
+  IPv6InternetRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      DestinationIpv6CidrBlock: "::/0"
+      GatewayId: !Ref InternetGateway
+      RouteTableId: !Ref RouteTable
+
+  SubnetRouteTableAssociation:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      RouteTableId: !Ref RouteTable
+      SubnetId: !Ref PublicSubnet
+
+  GameServerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Enable UDP access for game server
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: udp
+          FromPort: 0
+          ToPort: 65535
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: udp
+          FromPort: 0
+          ToPort: 65535
+          CidrIpv6: "::/0"
+      # Allow all outbound traffic
+      SecurityGroupEgress:
+        - Description: Allow all outbound traffic
+          IpProtocol: "-1"
+          CidrIp: 0.0.0.0/0
+        - Description: Allow all outbound traffic
+          IpProtocol: "-1"
+          CidrIp: "::/0"
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-sg'
 
   #
   # AUTH

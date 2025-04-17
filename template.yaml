@@ -191,6 +191,8 @@ Resources:
                 - apigateway.amazonaws.com
                 - dynamodb.amazonaws.com
                 - gamelift.amazonaws.com
+                - ecs.amazonaws.com
+                - ecs-tasks.amazonaws.com
             Action:
               - 'sts:AssumeRole'
       Policies:

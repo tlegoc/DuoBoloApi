@@ -1,11 +1,7 @@
 # Use minimal base image
-FROM debian:bullseye-slim
+#FROM debian:bookworm-slim
 
-# Install required dependencies (you can add more here)
-#RUN apt-get update && apt-get install -y \
-#    libssl-dev \
-#    ca-certificates \
-#    && rm -rf /var/lib/apt/lists/*
+FROM ubuntu:23.10
 
 # Create app directory
 WORKDIR /app
@@ -13,8 +9,10 @@ WORKDIR /app
 # Copy your game server files
 COPY . /app
 
+RUN chmod +x ./DuoBoloEngine
+
 # Expose game server port (adjust if needed)
-EXPOSE 7777/udp
+EXPOSE 13333/udp
 
 # Set the default command
-CMD ["./DuoBoloServer"]
+CMD ["./DuoBoloEngine"]
