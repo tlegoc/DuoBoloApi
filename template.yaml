@@ -181,6 +181,7 @@ Resources:
   AllowAllRole:
     Type: 'AWS::IAM::Role'
     Properties:
+      RoleName: allowallrole
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:

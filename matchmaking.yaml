@@ -181,6 +181,16 @@ Resources:
   TaskDefinition:
     Type: AWS::ECS::TaskDefinition
     Properties:
+      Cpu: 256
+      Memory: 512
+      ExecutionRoleArn: !Ref AllowAllRoleArn
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      RuntimePlatform:
+        CpuArchitecture: X86_64
+        OperatingSystemFamily: LINUX
+      TaskRoleArn: !Ref AllowAllRoleArn
       ContainerDefinitions:
         - Name: !Sub '${AWS::StackName}-container'
           Essential: true
@@ -196,39 +206,6 @@ Resources:
               awslogs-group: !Sub '/ecs/${AWS::StackName}-container'
               awslogs-region: !Ref AWS::Region
               awslogs-stream-prefix: ecs
-      #          RepositoryCredentials:
-      #            RepositoryCredentials
-      #          Secrets:
-      #            - Secret
-      #          StartTimeout: Integer
-      #          StopTimeout: Integer
-      #          Command:
-      #            - String
-      #          DependsOn:
-      #            - ContainerDependency
-      #          DnsSearchDomains:
-      #            - String
-      #          DnsServers:
-      #            - String
-      #          DockerLabels:
-      #            Key: Value
-      #          EntryPoint:
-      #            - String
-      #          Environment:
-      #            - KeyValuePair
-      #          EnvironmentFiles:
-      #            - EnvironmentFile
-      Cpu: 256
-      ExecutionRoleArn: !Ref AllowAllRoleArn
-      Memory: 512
-      NetworkMode: awsvpc
-      PidMode: task
-      RequiresCompatibilities:
-        - FARGATE
-      RuntimePlatform:
-        CpuArchitecture: X86_64
-        OperatingSystemFamily: LINUX
-      TaskRoleArn: !Ref AllowAllRoleArn
 
   ECSCluster:
     Type: AWS::ECS::Cluster
@@ -252,165 +229,64 @@ Resources:
     Type: AWS::EC2::VPC
     Properties:
       CidrBlock: 10.0.0.0/16
-      EnableDnsHostnames: true
       EnableDnsSupport: true
-      InstanceTenancy: default
-      Tags:
-        - Key: Name
-          Value: !Sub '${AWS::StackName}-vpc'
-
-  IPv6CidrBlock:
-    Type: AWS::EC2::VPCCidrBlock
-    Properties:
-      VpcId: !Ref VPC
-      AmazonProvidedIpv6CidrBlock: true
-
-  PublicSubnet1:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref VPC
-      AvailabilityZone: !Select
-        - 0
-        - !GetAZs
-          Ref: 'AWS::Region'
-      CidrBlock: 10.0.0.0/19
-#      Ipv6CidrBlock:
-#        Fn::Select:
-#          - 0
-#          - Fn::Cidr:
-#              - Fn::Select:
-#                  - 0
-#                  - Fn::GetAtt: [ VPC, Ipv6CidrBlocks ]
-#              - 256
-#              - 64
-#      AssignIpv6AddressOnCreation: true
-      MapPublicIpOnLaunch: true
-      Tags:
-        - Key: Name
-          Value: !Sub '${AWS::StackName}-public-subnet1'
-
-  PublicSubnet2:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref VPC
-      AvailabilityZone: !Select
-        - 0
-        - !GetAZs
-          Ref: 'AWS::Region'
-      CidrBlock: 10.0.32.0/19
-#      Ipv6CidrBlock:
-#        Fn::Select:
-#          - 0
-#          - Fn::Cidr:
-#              - Fn::Select:
-#                  - 0
-#                  - Fn::GetAtt: [ VPC, Ipv6CidrBlocks ]
-#              - 256
-#              - 64
-#      AssignIpv6AddressOnCreation: true
-      MapPublicIpOnLaunch: true
-      Tags:
-        - Key: Name
-          Value: !Sub '${AWS::StackName}-public-subnet2'
-
-  RouteTable:
-    Type: "AWS::EC2::RouteTable"
-    Properties:
-      VpcId: !Ref VPC
+      EnableDnsHostnames: true
 
   InternetGateway:
-    Type: "AWS::EC2::InternetGateway"
+    Type: AWS::EC2::InternetGateway
 
   VPCGatewayAttachment:
-    Type: "AWS::EC2::VPCGatewayAttachment"
+    Type: AWS::EC2::VPCGatewayAttachment
     Properties:
       VpcId: !Ref VPC
       InternetGatewayId: !Ref InternetGateway
 
-  InternetRoute:
-    Type: "AWS::EC2::Route"
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.0.0/16
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      MapPublicIpOnLaunch: true
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+
+  PublicRoute:
+    Type: AWS::EC2::Route
     DependsOn: VPCGatewayAttachment
     Properties:
-      DestinationCidrBlock: "0.0.0.0/0"
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
       GatewayId: !Ref InternetGateway
-      RouteTableId: !Ref RouteTable
 
-  IPv6InternetRoute:
-    Type: AWS::EC2::Route
+  PublicSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
-      DestinationIpv6CidrBlock: "::/0"
-      GatewayId: !Ref InternetGateway
-      RouteTableId: !Ref RouteTable
+      SubnetId: !Ref PublicSubnet
+      RouteTableId: !Ref PublicRouteTable
 
-  Subnet1RouteTableAssociation:
-    Type: "AWS::EC2::SubnetRouteTableAssociation"
-    Properties:
-      RouteTableId: !Ref RouteTable
-      SubnetId: !Ref PublicSubnet1
-
-  Subnet2RouteTableAssociation:
-    Type: "AWS::EC2::SubnetRouteTableAssociation"
-    Properties:
-      RouteTableId: !Ref RouteTable
-      SubnetId: !Ref PublicSubnet2
-
-  GameServerSecurityGroup:
+  SecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: Enable UDP access for game server
       VpcId: !Ref VPC
       SecurityGroupIngress:
-        - IpProtocol: udp
-          FromPort: 0
-          ToPort: 65535
+        - IpProtocol: -1
           CidrIp: 0.0.0.0/0
-        - IpProtocol: udp
-          FromPort: 0
-          ToPort: 65535
+        - IpProtocol: -1
           CidrIpv6: "::/0"
-      # Allow all outbound traffic
       SecurityGroupEgress:
-        - Description: Allow all outbound traffic
-          IpProtocol: "-1"
+        - IpProtocol: "-1"
           CidrIp: 0.0.0.0/0
-        - Description: Allow all outbound traffic
-          IpProtocol: "-1"
-          CidrIp: "::/0"
+        - IpProtocol: "-1"
+          CidrIpv6: "::/0"
       Tags:
         - Key: Name
           Value: !Sub '${AWS::StackName}-sg'
 
-  NLB:
-    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
-    Properties:
-      Name: !Sub 'game-load-balancer'
-      Type: network
-      Scheme: internet-facing
-      Subnets:
-        - !Ref PublicSubnet1
-        - !Ref PublicSubnet2
-
-  TargetGroup:
-    Type: AWS::ElasticLoadBalancingV2::TargetGroup
-    Properties:
-      Name: 'game-target-group'
-      Port: 13333
-      Protocol: UDP
-      VpcId: !Ref VPC
-      TargetType: ip
-      HealthCheckProtocol: TCP
-      HealthCheckPort: 12345
-      HealthCheckEnabled: true
-
-  Listener:
-    Type: AWS::ElasticLoadBalancingV2::Listener
-    Properties:
-      LoadBalancerArn: !Ref NLB
-      Port: 13333
-      Protocol: UDP
-      DefaultActions:
-        - Type: forward
-          TargetGroupArn: !Ref TargetGroup
   #
   # AUTH
   #
