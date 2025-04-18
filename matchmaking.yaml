@@ -200,6 +200,14 @@ Resources:
               Protocol: udp
           RestartPolicy:
             Enabled: false
+#          HealthCheck:
+#            Command:
+#              - CMD-SHELL
+#              - exit 0
+#            IntervalSeconds: 30
+#            TimeoutSeconds: 5
+#            Retries: 3
+#            StartPeriodSeconds: 0
           LogConfiguration:
             LogDriver: awslogs
             Options:
