@@ -20,12 +20,18 @@ Parameters:
   AllowAllRoleArn:
     Type: String
     Description: The ARN of the role that allows all actions. This is used for the Lambda functions.
+  AllowAllRoleName:
+    Type: String
+    Description: The name of the role that allows all actions. This is used for the Lambda functions.
   CognitoUserPoolId:
     Type: String
     Description: The ID of the Cognito User Pool to use for authentication.
   CognitoUserPoolClientId:
     Type: String
     Description: The ID of the Cognito User Pool Client to use for authentication.
+  ECSAMI:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ecs/optimized-ami/amazon-linux-2/recommended/image_id
 
 Outputs:
   ApiEndpoint:
@@ -114,6 +120,8 @@ Resources:
           MATCHMAKING_CONFIG_NAME: !Ref MatchmakingConfiguration
           WEBSOCKET_API_ID: !Ref Api
           STAGE: !Ref StageParameter
+          CLUSTER: !Ref ECSCluster
+          LAUNCH_TASK: !Ref TaskDefinition
       Events:
         MatchmakingEvent:
           Type: SNS
@@ -178,15 +186,100 @@ Resources:
       LogGroupName: !Sub '/ecs/${AWS::StackName}-container'
       RetentionInDays: 7
 
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub '${AWS::StackName}-cluster'
+      ClusterSettings:
+        - Name: containerInsights
+          Value: enabled
+
+  ECSAutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    DependsOn:
+      - ECSCluster
+    Properties:
+      VPCZoneIdentifier:
+        - !Ref PublicSubnetA
+        - !Ref PublicSubnetB
+      MinSize: 0
+      MaxSize: 2
+      DesiredCapacity: 0
+      MixedInstancesPolicy:
+        LaunchTemplate:
+          LaunchTemplateSpecification:
+            LaunchTemplateId: !Ref ECSLaunchTemplate
+            Version: !GetAtt ECSLaunchTemplate.LatestVersionNumber
+#          Overrides:
+#            - InstanceType: t3.nano
+        InstancesDistribution:
+          OnDemandBaseCapacity: 0
+          OnDemandPercentageAboveBaseCapacity: 0
+          SpotAllocationStrategy: lowest-price
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-ecs-instance'
+          PropagateAtLaunch: true
+
+  ECSLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateData:
+        ImageId: !Ref ECSAMI
+        InstanceType: t3.nano
+        IamInstanceProfile:
+          Name: !Ref ECSInstanceProfile
+        SecurityGroupIds:
+          - !Ref SecurityGroup
+        UserData: !Base64
+          Fn::Sub:
+            - |-
+              #!/bin/bash
+              echo ECS_CLUSTER=${ClusterName} >> /etc/ecs/ecs.config;
+            - ClusterName: !Sub '${AWS::StackName}-cluster'
+      LaunchTemplateName: !Sub '${AWS::StackName}-launch-template'
+
+  ECSInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref AllowAllRoleName
+
+  CapacityProvider:
+    Type: AWS::ECS::CapacityProvider
+    Properties:
+      AutoScalingGroupProvider:
+        AutoScalingGroupArn: !Ref ECSAutoScalingGroup
+        ManagedScaling:
+          InstanceWarmupPeriod: 0
+          Status: ENABLED
+          TargetCapacity: 100
+        ManagedTerminationProtection: DISABLED
+
+  CapacityProviderAssociation:
+    Type: AWS::ECS::ClusterCapacityProviderAssociations
+    DependsOn:
+      - ECSCluster
+    Properties:
+      CapacityProviders:
+        - !Ref CapacityProvider
+        - FARGATE
+        - FARGATE_SPOT
+      Cluster: !Ref ECSCluster
+      DefaultCapacityProviderStrategy:
+        - Base: 0
+          CapacityProvider: !Ref CapacityProvider
+          Weight: 1
+
   TaskDefinition:
     Type: AWS::ECS::TaskDefinition
     Properties:
       Cpu: 256
-      Memory: 512
+      Memory: 256
       ExecutionRoleArn: !Ref AllowAllRoleArn
-      NetworkMode: awsvpc
+      NetworkMode: host
       RequiresCompatibilities:
-        - FARGATE
+        - EC2
       RuntimePlatform:
         CpuArchitecture: X86_64
         OperatingSystemFamily: LINUX
@@ -198,16 +291,6 @@ Resources:
           PortMappings:
             - ContainerPort: 13333
               Protocol: udp
-          RestartPolicy:
-            Enabled: false
-#          HealthCheck:
-#            Command:
-#              - CMD-SHELL
-#              - exit 0
-#            IntervalSeconds: 30
-#            TimeoutSeconds: 5
-#            Retries: 3
-#            StartPeriodSeconds: 0
           LogConfiguration:
             LogDriver: awslogs
             Options:
@@ -215,23 +298,9 @@ Resources:
               awslogs-region: !Ref AWS::Region
               awslogs-stream-prefix: ecs
 
-  ECSCluster:
-    Type: AWS::ECS::Cluster
-    Properties:
-      ClusterName: !Sub '${AWS::StackName}-cluster'
-      CapacityProviders:
-        - FARGATE
-        - FARGATE_SPOT
-      DefaultCapacityProviderStrategy:
-        - CapacityProvider: FARGATE_SPOT
-          Base: 1
-          Weight: 1
-      ClusterSettings:
-        - Name: containerInsights
-          Value: enabled
-      Configuration:
-        ExecuteCommandConfiguration:
-          Logging: DEFAULT
+  #
+  # NETWORKING
+  #
 
   VPC:
     Type: AWS::EC2::VPC
@@ -249,12 +318,26 @@ Resources:
       VpcId: !Ref VPC
       InternetGatewayId: !Ref InternetGateway
 
-  PublicSubnet:
+  PublicSubnetA:
     Type: AWS::EC2::Subnet
     Properties:
       VpcId: !Ref VPC
-      CidrBlock: 10.0.0.0/16
-      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      CidrBlock: 10.0.0.0/24
+      AvailabilityZone: !Select
+        - 0
+        - !GetAZs
+          Ref: 'AWS::Region'
+      MapPublicIpOnLaunch: true
+
+  PublicSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.1.0/24
+      AvailabilityZone: !Select
+        - 1
+        - !GetAZs
+          Ref: 'AWS::Region'
       MapPublicIpOnLaunch: true
 
   PublicRouteTable:
@@ -270,10 +353,16 @@ Resources:
       DestinationCidrBlock: 0.0.0.0/0
       GatewayId: !Ref InternetGateway
 
-  PublicSubnetRouteTableAssociation:
+  PublicSubnetARouteTableAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
-      SubnetId: !Ref PublicSubnet
+      SubnetId: !Ref PublicSubnetA
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnetBRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetB
       RouteTableId: !Ref PublicRouteTable
 
   SecurityGroup:

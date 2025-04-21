@@ -194,6 +194,7 @@ Resources:
                 - gamelift.amazonaws.com
                 - ecs.amazonaws.com
                 - ecs-tasks.amazonaws.com
+                - ec2.amazonaws.com
             Action:
               - 'sts:AssumeRole'
       Policies:
@@ -214,6 +215,7 @@ Resources:
       Parameters:
         StageParameter: !Ref StageParameter
         AllowAllRoleArn: !GetAtt AllowAllRole.Arn
+        AllowAllRoleName: allowallrole
         CognitoUserPoolId: !Ref UserPool
         CognitoUserPoolClientId: !Ref UserPoolClient
 
