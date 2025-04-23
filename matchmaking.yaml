@@ -122,6 +122,10 @@ Resources:
           STAGE: !Ref StageParameter
           CLUSTER: !Ref ECSCluster
           LAUNCH_TASK: !Ref TaskDefinition
+          SUBNET_A: !Ref PublicSubnetA
+          SUBNET_B: !Ref PublicSubnetB
+          SECURITY_GROUP: !Ref SecurityGroup
+          MATCHES_TABLE: !Ref MatchesTable
       Events:
         MatchmakingEvent:
           Type: SNS
@@ -155,6 +159,21 @@ Resources:
             FilterPolicy: '{ "detail": {
               "type": ["MatchmakingTimedOut", "MatchmakingFailed"]
             }}'
+
+  MatchesTable:
+    Type: AWS::DynamoDB::Table
+    Description: "Matches table. Allow for retrieving player connections, and storing game session information."
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: "TaskId"
+          AttributeType: "S"
+      KeySchema:
+        - AttributeName: "TaskId"
+          KeyType: "HASH"
+      TimeToLiveSpecification:
+        AttributeName: "ExpirationTime"
+        Enabled: true
 
   #
   # SERVER
@@ -194,67 +213,67 @@ Resources:
         - Name: containerInsights
           Value: enabled
 
-  ECSAutoScalingGroup:
-    Type: AWS::AutoScaling::AutoScalingGroup
-    DependsOn:
-      - ECSCluster
-    Properties:
-      VPCZoneIdentifier:
-        - !Ref PublicSubnetA
-        - !Ref PublicSubnetB
-      MinSize: 0
-      MaxSize: 2
-      DesiredCapacity: 0
-      MixedInstancesPolicy:
-        LaunchTemplate:
-          LaunchTemplateSpecification:
-            LaunchTemplateId: !Ref ECSLaunchTemplate
-            Version: !GetAtt ECSLaunchTemplate.LatestVersionNumber
-#          Overrides:
-#            - InstanceType: t3.nano
-        InstancesDistribution:
-          OnDemandBaseCapacity: 0
-          OnDemandPercentageAboveBaseCapacity: 0
-          SpotAllocationStrategy: lowest-price
-      Tags:
-        - Key: Name
-          Value: !Sub '${AWS::StackName}-ecs-instance'
-          PropagateAtLaunch: true
+#  ECSAutoScalingGroup:
+#    Type: AWS::AutoScaling::AutoScalingGroup
+#    DependsOn:
+#      - ECSCluster
+#    Properties:
+#      VPCZoneIdentifier:
+#        - !Ref PublicSubnetA
+#        - !Ref PublicSubnetB
+#      MinSize: 0
+#      MaxSize: 2
+#      DesiredCapacity: 0
+#      MixedInstancesPolicy:
+#        LaunchTemplate:
+#          LaunchTemplateSpecification:
+#            LaunchTemplateId: !Ref ECSLaunchTemplate
+#            Version: !GetAtt ECSLaunchTemplate.LatestVersionNumber
+##          Overrides:
+##            - InstanceType: t3.nano
+#        InstancesDistribution:
+#          OnDemandBaseCapacity: 0
+#          OnDemandPercentageAboveBaseCapacity: 0
+#          SpotAllocationStrategy: lowest-price
+#      Tags:
+#        - Key: Name
+#          Value: !Sub '${AWS::StackName}-ecs-instance'
+#          PropagateAtLaunch: true
 
-  ECSLaunchTemplate:
-    Type: AWS::EC2::LaunchTemplate
-    Properties:
-      LaunchTemplateData:
-        ImageId: !Ref ECSAMI
-        InstanceType: t3.nano
-        IamInstanceProfile:
-          Name: !Ref ECSInstanceProfile
-        SecurityGroupIds:
-          - !Ref SecurityGroup
-        UserData: !Base64
-          Fn::Sub:
-            - |-
-              #!/bin/bash
-              echo ECS_CLUSTER=${ClusterName} >> /etc/ecs/ecs.config;
-            - ClusterName: !Sub '${AWS::StackName}-cluster'
-      LaunchTemplateName: !Sub '${AWS::StackName}-launch-template'
+#  ECSLaunchTemplate:
+#    Type: AWS::EC2::LaunchTemplate
+#    Properties:
+#      LaunchTemplateData:
+#        ImageId: !Ref ECSAMI
+#        InstanceType: t3.nano
+#        IamInstanceProfile:
+#          Name: !Ref ECSInstanceProfile
+#        SecurityGroupIds:
+#          - !Ref SecurityGroup
+#        UserData: !Base64
+#          Fn::Sub:
+#            - |-
+#              #!/bin/bash
+#              echo ECS_CLUSTER=${ClusterName} >> /etc/ecs/ecs.config;
+#            - ClusterName: !Sub '${AWS::StackName}-cluster'
+#      LaunchTemplateName: !Sub '${AWS::StackName}-launch-template'
 
-  ECSInstanceProfile:
-    Type: AWS::IAM::InstanceProfile
-    Properties:
-      Roles:
-        - !Ref AllowAllRoleName
+#  ECSInstanceProfile:
+#    Type: AWS::IAM::InstanceProfile
+#    Properties:
+#      Roles:
+#        - !Ref AllowAllRoleName
 
-  CapacityProvider:
-    Type: AWS::ECS::CapacityProvider
-    Properties:
-      AutoScalingGroupProvider:
-        AutoScalingGroupArn: !Ref ECSAutoScalingGroup
-        ManagedScaling:
-          InstanceWarmupPeriod: 0
-          Status: ENABLED
-          TargetCapacity: 100
-        ManagedTerminationProtection: DISABLED
+#  CapacityProvider:
+#    Type: AWS::ECS::CapacityProvider
+#    Properties:
+#      AutoScalingGroupProvider:
+#        AutoScalingGroupArn: !Ref ECSAutoScalingGroup
+#        ManagedScaling:
+#          InstanceWarmupPeriod: 0
+#          Status: ENABLED
+#          TargetCapacity: 100
+#        ManagedTerminationProtection: DISABLED
 
   CapacityProviderAssociation:
     Type: AWS::ECS::ClusterCapacityProviderAssociations
@@ -262,24 +281,25 @@ Resources:
       - ECSCluster
     Properties:
       CapacityProviders:
-        - !Ref CapacityProvider
+#        - !Ref CapacityProvider
         - FARGATE
         - FARGATE_SPOT
       Cluster: !Ref ECSCluster
       DefaultCapacityProviderStrategy:
         - Base: 0
-          CapacityProvider: !Ref CapacityProvider
+          CapacityProvider: FARGATE_SPOT # !Ref CapacityProvider
           Weight: 1
 
   TaskDefinition:
     Type: AWS::ECS::TaskDefinition
     Properties:
       Cpu: 256
-      Memory: 256
+      Memory: 512
       ExecutionRoleArn: !Ref AllowAllRoleArn
-      NetworkMode: host
+      NetworkMode: awsvpc # host
       RequiresCompatibilities:
         - EC2
+        - FARGATE
       RuntimePlatform:
         CpuArchitecture: X86_64
         OperatingSystemFamily: LINUX
@@ -297,6 +317,41 @@ Resources:
               awslogs-group: !Sub '/ecs/${AWS::StackName}-container'
               awslogs-region: !Ref AWS::Region
               awslogs-stream-prefix: ecs
+
+  OnServerRunningLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-onserverrunning'
+      CodeUri: mm_onmatchrunning/
+      Role: !Ref AllowAllRoleArn
+      Architectures:
+        - arm64
+      Environment:
+        Variables:
+          REGION: !Ref 'AWS::Region'
+          MATCHMAKING_CONFIG_NAME: !Ref MatchmakingConfiguration
+          WEBSOCKET_API_ID: !Ref Api
+          STAGE: !Ref StageParameter
+          CLUSTER: !Ref ECSCluster
+          LAUNCH_TASK: !Ref TaskDefinition
+          SUBNET_A: !Ref PublicSubnetA
+          SUBNET_B: !Ref PublicSubnetB
+          SECURITY_GROUP: !Ref SecurityGroup
+          MATCHES_TABLE: !Ref MatchesTable
+      Events:
+        ECSRunningTaskEvent:
+          Type: EventBridgeRule
+          Properties:
+            Pattern:
+              source:
+                - "aws.ecs"
+              detail-type:
+                - "ECS Task State Change"
+              detail:
+                lastStatus:
+                  - "RUNNING"
+                clusterArn:
+                  - !Sub "arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:cluster/${ECSCluster}"
 
   #
   # NETWORKING
