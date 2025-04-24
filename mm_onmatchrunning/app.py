@@ -8,8 +8,6 @@ websocket_api_id = os.environ['WEBSOCKET_API_ID']
 stage = os.environ['STAGE']
 
 def lambda_handler(event, context):
-    # receives an aws event bridge event for a fargate task running
-
     # get task ip
     task_arn = event['detail']['taskArn']
 

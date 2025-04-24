@@ -8,4 +8,4 @@ RUN chmod +x ./DuoBoloEngine
 
 EXPOSE 13333/udp
 
-CMD ["timeout", "1h", "./DuoBoloEngine"]
+CMD ["timeout", "20m", "./DuoBoloEngine"]

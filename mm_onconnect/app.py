@@ -100,17 +100,17 @@ def lambda_handler(event, context):
                 'body': json.dumps('Failed to start matchmaking')
             }
 
-        ticket = response['MatchmakingTicket']
-        # remove StartTime and EndTime from the ticket
-        ticket.pop('StartTime', None)
-        ticket.pop('EndTime', None)
+        # ticket = response['MatchmakingTicket']
+        # # remove StartTime and EndTime from the ticket
+        # ticket.pop('StartTime', None)
+        # ticket.pop('EndTime', None)
 
         return {
             'statusCode': 200,
             'body': json.dumps({
                 'message': 'Connected',
-                'user': payload['cognito:username'],
-                'matchmaking_ticket': ticket
+                'user': payload['cognito:username']#,
+                # 'matchmaking_ticket': ticket
             })
         }
     except Exception as e:

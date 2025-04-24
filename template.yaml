@@ -237,35 +237,6 @@ Resources:
             Method: get
             RestApiId: !Ref Api
 
-
-  #  ResetPasswordFunction:
-  #    Type: AWS::Serverless::Function
-  #    Properties:
-  #      FunctionName: wei_app_lambda_reset_password
-  #      CodeUri: reset_password/
-  #      Role: !GetAtt AllowAllRole.Arn
-  #      Events:
-  #        ApiEvent:
-  #          Type: Api
-  #          Properties:
-  #            Path: /reset_password
-  #            Method: POST
-  #            RestApiId: !Ref WeiAppApi
-  #
-  #  ResetPasswordSendCodeFunction:
-  #    Type: AWS::Serverless::Function
-  #    Properties:
-  #      FunctionName: wei_app_lambda_reset_password_code_send
-  #      CodeUri: reset_password_code_send/
-  #      Role: !GetAtt AllowAllRole.Arn
-  #      Events:
-  #        ApiEvent:
-  #          Type: Api
-  #          Properties:
-  #            Path: /reset_password_code_send
-  #            Method: POST
-  #            RestApiId: !Ref WeiAppApi
-
   PostConfirmSignUpFunction:
     Type: AWS::Serverless::Function
     Properties:
