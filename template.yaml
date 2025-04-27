@@ -53,26 +53,26 @@ Resources:
               Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
               Access-Control-Allow-Methods: "'GET,PUT,POST,DELETE,OPTIONS'"
       Models:
-        CreateChallengeModel:
+        PostMatchResultModel:
           type: object
-          required: [ name, description, points, start, end ]
+          required:
+            - matchId
+            - players
           properties:
-            challenge:
+            matchId:
               type: string
-            name:
-              type: string
-            description:
-              type: string
-            picture_id:
-              type: string
-            points:
-              type: integer
-            start:
-              type: integer
-            end:
-              type: integer
-            max_count:
-              type: integer
+            players:
+              type: array
+              items:
+                type: object
+                required:
+                  - playerId
+                  - cubesDropped
+                properties:
+                  playerId:
+                    type: string
+                  cubesDropped:
+                    type: integer
 
   #
   # COGNITO
@@ -218,10 +218,22 @@ Resources:
         AllowAllRoleName: allowallrole
         CognitoUserPoolId: !Ref UserPool
         CognitoUserPoolClientId: !Ref UserPoolClient
+        PlayerStorageTable: !Ref PlayerStorageTable
 
   #
   # FUNCTIONS
   #
+
+  Dependencies:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: !Sub '${AWS::StackName}-dependencies'
+      Description: Dependencies for the Lambda functions
+      ContentUri: py_deps/
+      CompatibleArchitectures:
+        - arm64
+      CompatibleRuntimes:
+        - python3.12
 
   HelloWorldFunction:
     Type: AWS::Serverless::Function
@@ -236,6 +248,44 @@ Resources:
             Path: /
             Method: get
             RestApiId: !Ref Api
+
+  SrvPostMatchResultFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-lambda-postmatchresult'
+      CodeUri: srv_postmatchresult/
+      Role: !GetAtt AllowAllRole.Arn
+      Environment:
+        Variables:
+          MATCHES_TABLE: !GetAtt MatchmakingStack.Outputs.MatchesTable
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /server/postmatchresult
+            Method: post
+            RestApiId: !Ref Api
+            RequestModel:
+              Model: PostMatchResultModel
+              ValidateBody: true
+
+  UserGetSelfFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-lambda-uesrgetself'
+      CodeUri: user_get_self/
+      Role: !GetAtt AllowAllRole.Arn
+      Layers:
+        - !Ref Dependencies
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /user
+            Method: get
+            RestApiId: !Ref Api
+            Auth:
+              Authorizer: CognitoAuthorizer
 
   PostConfirmSignUpFunction:
     Type: AWS::Serverless::Function

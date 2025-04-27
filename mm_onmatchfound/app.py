@@ -41,6 +41,19 @@ def lambda_handler(event, context):
             startedBy='mm_onmatchfound',
             taskDefinition=task,
             clientToken=match_id,
+            overrides={
+              'containerOverrides': [
+                  {
+                      'name': 'container',
+                      'environment': [
+                          {
+                              'name': 'MATCH_ID',
+                              'value': match_id
+                          },
+                      ],
+                  },
+              ]
+            },
             networkConfiguration={
                 'awsvpcConfiguration': {
                     'subnets': [subnet_a, subnet_b],
@@ -67,7 +80,8 @@ def lambda_handler(event, context):
         players += [
             {
                 'ConnectionId': connection_id,
-                'TicketId': ticket_id
+                'TicketId': ticket_id,
+                'PlayerId': ticket["players"][0]["playerId"],
             }
         ]
 

@@ -32,11 +32,26 @@ Parameters:
   ECSAMI:
     Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
     Default: /aws/service/ecs/optimized-ami/amazon-linux-2/recommended/image_id
+  PlayerStorageTable:
+    Type: String
+    Description: The name of the DynamoDB table to use for player storage.
 
 Outputs:
   ApiEndpoint:
     Description: The endpoint of the WebSocket API
     Value: !Sub 'wss://${Api}.execute-api.${AWS::Region}.amazonaws.com/${StageParameter}'
+  ApiId:
+    Description: The ID of the WebSocket API
+    Value: !Ref Api
+  ApiStage:
+    Description: The stage of the WebSocket API
+    Value: !Ref Stage
+  MatchesTable:
+    Description: The name of the matches table
+    Value: !Ref MatchesTable
+  MatchmakingConfiguration:
+    Description: The ARN of the matchmaking configuration
+    Value: !GetAtt MatchmakingConfiguration.Arn
 
 Resources:
   Api:
@@ -53,7 +68,7 @@ Resources:
   MatchmakingRuleSet:
     Type: AWS::GameLift::MatchmakingRuleSet
     Properties:
-      Name: !Sub '${AWS::StackName}-ruleset'
+      Name: !Sub '${AWS::StackName}-rulesetv2'
       RuleSetBody: '{
     "ruleLanguageVersion": "1.0",
     "teams": [{
@@ -70,19 +85,19 @@ Resources:
         "name": "SimilarSkill",
         "type": "batchDistance",
         "batchAttribute": "skill",
-        "maxDistance": 10
+        "maxDistance": 30
     }],
     "expansions": [{
         "target": "rules[SimilarSkill].maxDistance",
         "steps": [{
             "waitTimeSeconds": 10,
-            "value": 20
+            "value": 60
         }, {
             "waitTimeSeconds": 20,
-            "value": 40
+            "value": 120
         }, {
             "waitTimeSeconds": 30,
-            "value": 99999
+            "value": 9999999
         }]
     }]
 }'
@@ -213,67 +228,67 @@ Resources:
         - Name: containerInsights
           Value: enabled
 
-#  ECSAutoScalingGroup:
-#    Type: AWS::AutoScaling::AutoScalingGroup
-#    DependsOn:
-#      - ECSCluster
-#    Properties:
-#      VPCZoneIdentifier:
-#        - !Ref PublicSubnetA
-#        - !Ref PublicSubnetB
-#      MinSize: 0
-#      MaxSize: 2
-#      DesiredCapacity: 0
-#      MixedInstancesPolicy:
-#        LaunchTemplate:
-#          LaunchTemplateSpecification:
-#            LaunchTemplateId: !Ref ECSLaunchTemplate
-#            Version: !GetAtt ECSLaunchTemplate.LatestVersionNumber
-##          Overrides:
-##            - InstanceType: t3.nano
-#        InstancesDistribution:
-#          OnDemandBaseCapacity: 0
-#          OnDemandPercentageAboveBaseCapacity: 0
-#          SpotAllocationStrategy: lowest-price
-#      Tags:
-#        - Key: Name
-#          Value: !Sub '${AWS::StackName}-ecs-instance'
-#          PropagateAtLaunch: true
+  #  ECSAutoScalingGroup:
+  #    Type: AWS::AutoScaling::AutoScalingGroup
+  #    DependsOn:
+  #      - ECSCluster
+  #    Properties:
+  #      VPCZoneIdentifier:
+  #        - !Ref PublicSubnetA
+  #        - !Ref PublicSubnetB
+  #      MinSize: 0
+  #      MaxSize: 2
+  #      DesiredCapacity: 0
+  #      MixedInstancesPolicy:
+  #        LaunchTemplate:
+  #          LaunchTemplateSpecification:
+  #            LaunchTemplateId: !Ref ECSLaunchTemplate
+  #            Version: !GetAtt ECSLaunchTemplate.LatestVersionNumber
+  ##          Overrides:
+  ##            - InstanceType: t3.nano
+  #        InstancesDistribution:
+  #          OnDemandBaseCapacity: 0
+  #          OnDemandPercentageAboveBaseCapacity: 0
+  #          SpotAllocationStrategy: lowest-price
+  #      Tags:
+  #        - Key: Name
+  #          Value: !Sub '${AWS::StackName}-ecs-instance'
+  #          PropagateAtLaunch: true
 
-#  ECSLaunchTemplate:
-#    Type: AWS::EC2::LaunchTemplate
-#    Properties:
-#      LaunchTemplateData:
-#        ImageId: !Ref ECSAMI
-#        InstanceType: t3.nano
-#        IamInstanceProfile:
-#          Name: !Ref ECSInstanceProfile
-#        SecurityGroupIds:
-#          - !Ref SecurityGroup
-#        UserData: !Base64
-#          Fn::Sub:
-#            - |-
-#              #!/bin/bash
-#              echo ECS_CLUSTER=${ClusterName} >> /etc/ecs/ecs.config;
-#            - ClusterName: !Sub '${AWS::StackName}-cluster'
-#      LaunchTemplateName: !Sub '${AWS::StackName}-launch-template'
+  #  ECSLaunchTemplate:
+  #    Type: AWS::EC2::LaunchTemplate
+  #    Properties:
+  #      LaunchTemplateData:
+  #        ImageId: !Ref ECSAMI
+  #        InstanceType: t3.nano
+  #        IamInstanceProfile:
+  #          Name: !Ref ECSInstanceProfile
+  #        SecurityGroupIds:
+  #          - !Ref SecurityGroup
+  #        UserData: !Base64
+  #          Fn::Sub:
+  #            - |-
+  #              #!/bin/bash
+  #              echo ECS_CLUSTER=${ClusterName} >> /etc/ecs/ecs.config;
+  #            - ClusterName: !Sub '${AWS::StackName}-cluster'
+  #      LaunchTemplateName: !Sub '${AWS::StackName}-launch-template'
 
-#  ECSInstanceProfile:
-#    Type: AWS::IAM::InstanceProfile
-#    Properties:
-#      Roles:
-#        - !Ref AllowAllRoleName
+  #  ECSInstanceProfile:
+  #    Type: AWS::IAM::InstanceProfile
+  #    Properties:
+  #      Roles:
+  #        - !Ref AllowAllRoleName
 
-#  CapacityProvider:
-#    Type: AWS::ECS::CapacityProvider
-#    Properties:
-#      AutoScalingGroupProvider:
-#        AutoScalingGroupArn: !Ref ECSAutoScalingGroup
-#        ManagedScaling:
-#          InstanceWarmupPeriod: 0
-#          Status: ENABLED
-#          TargetCapacity: 100
-#        ManagedTerminationProtection: DISABLED
+  #  CapacityProvider:
+  #    Type: AWS::ECS::CapacityProvider
+  #    Properties:
+  #      AutoScalingGroupProvider:
+  #        AutoScalingGroupArn: !Ref ECSAutoScalingGroup
+  #        ManagedScaling:
+  #          InstanceWarmupPeriod: 0
+  #          Status: ENABLED
+  #          TargetCapacity: 100
+  #        ManagedTerminationProtection: DISABLED
 
   CapacityProviderAssociation:
     Type: AWS::ECS::ClusterCapacityProviderAssociations
@@ -281,7 +296,7 @@ Resources:
       - ECSCluster
     Properties:
       CapacityProviders:
-#        - !Ref CapacityProvider
+        #        - !Ref CapacityProvider
         - FARGATE
         - FARGATE_SPOT
       Cluster: !Ref ECSCluster
@@ -305,7 +320,7 @@ Resources:
         OperatingSystemFamily: LINUX
       TaskRoleArn: !Ref AllowAllRoleArn
       ContainerDefinitions:
-        - Name: !Sub '${AWS::StackName}-container'
+        - Name: !Sub 'container'
           Essential: true
           Image: !GetAtt ContainerRepository.RepositoryUri
           PortMappings:
@@ -469,6 +484,7 @@ Resources:
           COGNITO_USER_POOL_CLIENT_ID: !Ref 'CognitoUserPoolClientId'
           COGNITO_REGION: !Ref 'AWS::Region'
           MATCHMAKING_CONFIG_NAME: !Ref MatchmakingConfiguration
+          PLAYER_STORAGE_TABLE: !Ref PlayerStorageTable
       Layers:
         - !Ref AuthDependenciesLayer
 

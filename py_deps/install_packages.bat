@@ -1,0 +1,1 @@
+pip install -r requirements.txt -t python --platform manylinux2014_arm64 --implementation cp --python-version 3.12 --only-binary=:all: --upgrade

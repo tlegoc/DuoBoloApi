@@ -12,6 +12,7 @@ COGNITO_USER_POOL_ID = os.environ.get("COGNITO_USER_POOL_ID")
 COGNITO_REGION = os.environ.get("COGNITO_REGION")
 COGNITO_APP_CLIENT_ID = os.environ.get("COGNITO_USER_POOL_CLIENT_ID")
 COGNITO_POOL_ISSUER = f"https://cognito-idp.{COGNITO_REGION}.amazonaws.com/{COGNITO_USER_POOL_ID}"
+PLAYER_STORAGE_TABLE_NAME = os.environ.get("PLAYER_STORAGE_TABLE")
 
 # Fetch Cognito Pool public keys dynamically (public keys used to validate JWT)
 def get_cognito_public_keys():
@@ -77,6 +78,27 @@ def lambda_handler(event, context):
         # If we reach here, the token is valid
         client = boto3.client('gamelift')
 
+        dynamodb = boto3.resource('dynamodb')
+        table = dynamodb.Table(PLAYER_STORAGE_TABLE_NAME)
+
+        # Check if the user exists in the database
+        response = table.get_item(
+            Key={
+                'username': payload['cognito:username']
+            }
+        )
+
+        if 'Item' not in response:
+            return {
+                'statusCode': 401,
+                'body': json.dumps('Unauthorized')
+            }
+
+        user_data = response['Item']
+
+        # Get mmr (cubes dropped / matches played)
+        mmr = user_data['totalCubesDropped'] / user_data['matchCount'] if user_data['matchCount'] > 0 else 0
+
         ticket_id = base64.b16encode(event['requestContext']['connectionId'].encode('utf-8')).decode('utf-8')
         response = client.start_matchmaking(
             TicketId=ticket_id,
@@ -86,7 +108,7 @@ def lambda_handler(event, context):
                     'PlayerId': payload['cognito:username'],
                     'PlayerAttributes': {
                         'skill': {
-                            'N': 123 # TODO RETRIEVE FROM DB
+                            'N': mmr # TODO RETRIEVE FROM DB
                         }
                     }
                     # 'Team': 'red'

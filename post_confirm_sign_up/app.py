@@ -1,23 +1,25 @@
 import os
 import boto3
 
+# get db name from environment variable PLAYER_STORAGE_TABLE
+table_name = os.environ['PLAYER_STORAGE_TABLE']
+
 def lambda_handler(event, context):
 
-    client = boto3.client('dynamodb')
+    dynamodb = boto3.resource('dynamodb')
 
-    # get db name from environment variable PLAYER_STORAGE_TABLE
-    table_name = os.environ['PLAYER_STORAGE_TABLE']
+    table = dynamodb.Table(table_name)
 
     # get the user id from the event
     user_id = event['userName']
 
     # add to the database
-    response = client.put_item(
-        TableName=table_name,
+    response = table.put_item(
         Item={
-            'username': {
-                'S': user_id
-            }
+            'username': user_id,
+            'totalCubesDropped': 0,
+            'matchCount': 0,
+            "achievements": []
         }
     )
 
