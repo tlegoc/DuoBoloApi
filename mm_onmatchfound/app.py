@@ -79,9 +79,9 @@ def lambda_handler(event, context):
         connection_id = base64.b16decode(ticket_id.encode('utf-8')).decode('utf-8')
         players += [
             {
-                'ConnectionId': connection_id,
-                'TicketId': ticket_id,
-                'PlayerId': ticket["players"][0]["playerId"],
+                'connectionId': connection_id,
+                'ticketId': ticket_id,
+                'playerId': ticket["players"][0]["playerId"],
             }
         ]
 
@@ -96,11 +96,11 @@ def lambda_handler(event, context):
 
             table.put_item(
                 Item={
-                    'MatchId': match_id,
-                    'TaskId': task_id,
-                    'CreationTime': current_time,
-                    'ExpirationTime': expiration_time,  # 1 hour from now
-                    'Players': players
+                    'matchId': match_id,
+                    'taskId': task_id,
+                    'creationTime': current_time,
+                    'expirationTime': expiration_time,  # 1 hour from now
+                    'players': players
                 }
             )
     except Exception as e:

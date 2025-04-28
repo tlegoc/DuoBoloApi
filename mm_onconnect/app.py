@@ -88,6 +88,8 @@ def lambda_handler(event, context):
             }
         )
 
+        print(response)
+
         if 'Item' not in response:
             return {
                 'statusCode': 401,
@@ -108,7 +110,7 @@ def lambda_handler(event, context):
                     'PlayerId': payload['cognito:username'],
                     'PlayerAttributes': {
                         'skill': {
-                            'N': mmr # TODO RETRIEVE FROM DB
+                            'N': int(mmr) # TODO RETRIEVE FROM DB
                         }
                     }
                     # 'Team': 'red'

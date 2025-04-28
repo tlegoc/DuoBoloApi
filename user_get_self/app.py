@@ -86,7 +86,7 @@ def lambda_handler(event, context):
         "statusCode": 200,
         'body': json.dumps({
             'username': user_data['username'],
-            'achievements': user_data['achievements'],
+            'achievements': [int(n) for n in user_data['achievements']],
             'matchCount': int(user_data['matchCount']),
             'totalCubesDropped': int(user_data['totalCubesDropped'])
         }),

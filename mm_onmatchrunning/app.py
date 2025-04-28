@@ -39,7 +39,7 @@ def lambda_handler(event, context):
     response = dynamodb.get_item(
         TableName=matches_table,
         Key={
-            'TaskId': {
+            'taskId': {
                 'S': task_id
             }
         }

@@ -61,7 +61,7 @@ def lambda_handler(event, context):
     # check if the match id exists
     response = matches_table.get_item(
         Key={
-            'TaskId': match_id
+            'taskId': match_id
         }
     )
 
@@ -82,7 +82,7 @@ def lambda_handler(event, context):
         # for each player, update their database entry
         for player in body['players']:
             # check if player was in the match
-            if player['playerId'] not in [p['PlayerId'] for p in response['Item']['Players']]:
+            if player['playerId'] not in [p['playerId'] for p in response['Item']['players']]:
                 continue
 
             # update the database
