@@ -6,6 +6,28 @@ import boto3
 table_name = os.environ['PLAYER_STORAGE_TABLE']
 matches_table_name = os.environ['MATCHES_TABLE']
 
+milestones = [
+    10,
+    500,
+    1000,
+    200000,
+    1000000,
+    3141592
+]
+
+# todo use brain and do a proper achievement system with rules
+def get_success_indexes(gamecount: int, cubeDropped: int):
+    result = []
+
+    result.append(0)
+
+    for i in range(len(milestones)):
+        if cubeDropped >= milestones[i]:
+            result.append(i + 1)
+
+    return result
+
+
 def lambda_handler(event, context):
     """Sample pure Lambda function
 
@@ -94,6 +116,23 @@ def lambda_handler(event, context):
                 ExpressionAttributeValues={
                     ':cubesDropped': player['cubesDropped'],
                     ':matchCount': 1
+                },
+                ReturnValues='ALL_NEW'
+            )
+
+            if r['ResponseMetadata']['HTTPStatusCode'] != 200:
+                raise Exception('Error updating user in database')
+
+            success_indexes = get_success_indexes(r['Attributes']['matchCount'], r['Attributes']['totalCubesDropped'])
+
+            # update the achievements
+            r = table.update_item(
+                Key={
+                    'username': player['playerId']
+                },
+                UpdateExpression='SET achievements = :achievements',
+                ExpressionAttributeValues={
+                    ':achievements': success_indexes
                 }
             )
 
