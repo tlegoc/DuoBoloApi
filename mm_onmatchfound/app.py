@@ -123,7 +123,7 @@ def lambda_handler(event, context):
         match_launched = False
 
     for player in players:
-        connection_id = player["ConnectionId"]
+        connection_id = player["connectionId"]
 
         print(f"Canceling connection {connection_id}")
         gateway = boto3.client('apigatewaymanagementapi', endpoint_url=f'https://{websocket_api_id}.execute-api.{region}.amazonaws.com/{stage}')

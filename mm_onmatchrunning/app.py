@@ -46,13 +46,13 @@ def lambda_handler(event, context):
     )
 
     # for each players in Players
-    players = response['Item']['Players']['L']
+    players = response['Item']['players']['L']
 
     gateway = boto3.client('apigatewaymanagementapi', endpoint_url=f"https://{websocket_api_id}.execute-api.{region}.amazonaws.com/{stage}")
 
     for player in players:
         try:
-            connection_id = player['M']['ConnectionId']['S']
+            connection_id = player['M']['connectionId']['S']
 
             # send message to player
             response = gateway.post_to_connection(
