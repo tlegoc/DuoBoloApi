@@ -76,6 +76,8 @@ def lambda_handler(event, context):
 
     match_id = event['queryStringParameters']['matchId']
 
+    print(f"Match ID: {match_id}")
+
     """
     {
         "matchId": "string",
@@ -99,7 +101,20 @@ def lambda_handler(event, context):
         Limit=1
     )
 
+    print(response)
+
     if 'Items' not in response:
+        return {
+            "statusCode": 400,
+            'body': json.dumps({
+                'error': 'Match not found'
+            }),
+            'headers': {
+                'Access-Control-Allow-Origin': '*'
+            }
+        }
+
+    if len(response['Items']) == 0:
         return {
             "statusCode": 400,
             'body': json.dumps({

@@ -1,6 +1,7 @@
 import json
 import boto3
 import os
+import time
 
 matches_table = os.environ['MATCHES_TABLE']
 region = os.environ['REGION']
@@ -25,6 +26,9 @@ def lambda_handler(event, context):
     eni = task['attachments'][0]['details'][1]['value']
 
     ec2 = boto3.client('ec2')
+
+    # delay to allow for IP address assignment
+    time.sleep(2)
 
     response = ec2.describe_network_interfaces(
         NetworkInterfaceIds=[eni]

@@ -4,7 +4,7 @@ Description: matchmaking stack
 
 Globals:
   Function:
-    Timeout: 5
+    Timeout: 10
     Runtime: python3.12
     Handler: app.lambda_handler
 
