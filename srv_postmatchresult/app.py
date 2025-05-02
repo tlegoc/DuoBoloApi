@@ -52,31 +52,28 @@ def lambda_handler(event, context):
         Return doc: https://docs.aws.amazon.com/apigateway/latest/developerguide/set-up-lambda-proxy-integrations.html
     """
 
-    if 'queryStringParameters' not in event or event['queryStringParameters'] is None:
-        return {
-            "statusCode": 400,
-            'body': json.dumps({
-                'error': 'Missing queryStringParameters'
-            }),
-            'headers': {
-                'Access-Control-Allow-Origin': '*'
-            }
-        }
+    # if 'queryStringParameters' not in event or event['queryStringParameters'] is None:
+    #     return {
+    #         "statusCode": 400,
+    #         'body': json.dumps({
+    #             'error': 'Missing queryStringParameters'
+    #         }),
+    #         'headers': {
+    #             'Access-Control-Allow-Origin': '*'
+    #         }
+    #     }
+    #
+    # if 'matchId' not in event['queryStringParameters']:
+    #     return {
+    #         "statusCode": 400,
+    #         'body': json.dumps({
+    #             'error': 'Missing matchId'
+    #         }),
+    #         'headers': {
+    #             'Access-Control-Allow-Origin': '*'
+    #         }
+    #     }
 
-    if 'matchId' not in event['queryStringParameters']:
-        return {
-            "statusCode": 400,
-            'body': json.dumps({
-                'error': 'Missing matchId'
-            }),
-            'headers': {
-                'Access-Control-Allow-Origin': '*'
-            }
-        }
-
-    match_id = event['queryStringParameters']['matchId']
-
-    print(f"Match ID: {match_id}")
 
     """
     {
@@ -90,50 +87,56 @@ def lambda_handler(event, context):
     }
     """
 
+
+    body = json.loads(event['body'])
+
+    match_id = body['matchId']
+
+    print(f"Match ID: {match_id}")
+
     dynamodb = boto3.resource('dynamodb')
 
     table = dynamodb.Table(table_name)
     matches_table = dynamodb.Table(matches_table_name)
 
     # find the match in the matches table. matchId is not the key, so we have to scan the table
-    response = matches_table.scan(
-        FilterExpression=Attr('matchId').eq(match_id),
-        Limit=1
-    )
-
-    print(response)
-
-    if 'Items' not in response:
-        return {
-            "statusCode": 400,
-            'body': json.dumps({
-                'error': 'Match not found'
-            }),
-            'headers': {
-                'Access-Control-Allow-Origin': '*'
-            }
-        }
-
-    if len(response['Items']) == 0:
-        return {
-            "statusCode": 400,
-            'body': json.dumps({
-                'error': 'Match not found'
-            }),
-            'headers': {
-                'Access-Control-Allow-Origin': '*'
-            }
-        }
+    # response = matches_table.scan(
+    #     FilterExpression=Attr('matchId').eq(match_id),
+    #     Limit=1
+    # )
+    #
+    # print(response)
+    #
+    # if 'Items' not in response:
+    #     return {
+    #         "statusCode": 400,
+    #         'body': json.dumps({
+    #             'error': 'Match not found'
+    #         }),
+    #         'headers': {
+    #             'Access-Control-Allow-Origin': '*'
+    #         }
+    #     }
+    #
+    # if len(response['Items']) == 0:
+    #     return {
+    #         "statusCode": 400,
+    #         'body': json.dumps({
+    #             'error': 'Match not found'
+    #         }),
+    #         'headers': {
+    #             'Access-Control-Allow-Origin': '*'
+    #         }
+    #     }
 
     try:
-        body = json.loads(event['body'])
 
         # for each player, update their database entry
         for player in body['players']:
             try:
                 # check if player was in the match
-                if player['playerId'] not in [p['playerId'] for p in response['Items'][0]['players']]:
-                    continue
+                # if player['playerId'] not in [p['playerId'] for p in response['Items'][0]['players']]:
+                #     continue
 
                 # update the database
                 r = table.update_item(
