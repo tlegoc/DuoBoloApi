@@ -2,6 +2,7 @@ import json
 import os
 
 import boto3
+from boto3.dynamodb.conditions import Attr
 
 table_name = os.environ['PLAYER_STORAGE_TABLE']
 matches_table_name = os.environ['MATCHES_TABLE']
@@ -92,14 +93,13 @@ def lambda_handler(event, context):
     table = dynamodb.Table(table_name)
     matches_table = dynamodb.Table(matches_table_name)
 
-    # check if the match id exists
-    response = matches_table.get_item(
-        Key={
-            'taskId': match_id
-        }
+    # find the match in the matches table. matchId is not the key, so we have to scan the table
+    response = matches_table.scan(
+        FilterExpression=Attr('matchId').eq(match_id),
+        Limit=1
     )
 
-    if 'Item' not in response:
+    if 'Items' not in response:
         return {
             "statusCode": 400,
             'body': json.dumps({
@@ -117,7 +117,7 @@ def lambda_handler(event, context):
         for player in body['players']:
             try:
                 # check if player was in the match
-                if player['playerId'] not in [p['playerId'] for p in response['Item']['players']]:
+                if player['playerId'] not in [p['playerId'] for p in response['Items'][0]['players']]:
                     continue
 
                 # update the database
