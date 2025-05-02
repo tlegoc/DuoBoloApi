@@ -1,4 +1,8 @@
-FROM ubuntu:23.10
+FROM ubuntu
+
+RUN apt-get update && apt-get install -y openssl ca-certificates
+
+ENV CURLOPT_SSL_VERIFYPEER=0
 
 WORKDIR /app
 
